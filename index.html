@@ -1,9 +1,165 @@
-<!doctype html><html lang="tr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Futbol Analiz Merkezi</title><style>body{background:#0c1425;color:#edf2ff;font:16px system-ui;margin:0;padding:24px}main{max-width:1000px;margin:auto}h1{font-size:28px}.muted{color:#aebcd2}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.card,.match{background:#19263b;border:1px solid #30405b;border-radius:15px;padding:17px;margin:12px 0}.num{font-size:32px;font-weight:750}button{background:#2979ff;color:white;border:0;border-radius:9px;padding:11px;cursor:pointer;margin:5px}button:disabled{opacity:.5}pre{white-space:pre-wrap;overflow-wrap:anywhere}small{color:#aebcd2}.error{color:#ffb5b5}.good{color:#90e7ac}</style><main><h1>⚽ Dünya Ligleri – Analiz Merkezi</h1><p class="muted" id="mode">Yükleniyor...</p><div class="cards"><div class="card">Toplam maç<div class="num" id="total">0</div></div><div class="card">Analiz edilen<div class="num" id="analyzed">0</div></div><div class="card">Tamamlanan<div class="num" id="success">0</div></div><div class="card">Hatalı / eksik<div class="num" id="failed">0</div></div></div><button onclick="load()">Maçları yenile</button><button onclick="analyzeAll()">Tümünü analiz et</button><p id="progress" class="muted"></p><section id="matches"></section><h2>Analiz ayrıntıları</h2><div class="card"><pre id="details">Bir maçın analizini başlatın.</pre></div></main><script>
-let games=[],done=0,ok=0,bad=0,results={};const el=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function api(url,options){let r=await fetch(url,options),j=await r.json();if(!r.ok)throw Error(j.error||'Sunucu hatası');return j}
-async function load(){try{let d=await api('/api/matches');games=d.matches;done=ok=bad=0;results={};el('mode').textContent=d.demo?'DEMO MODU — gerçek veri için API anahtarı gerekli':'CANLI VERİ MODU — sağlayıcının kapsadığı maçlar';el('matches').innerHTML=games.map(m=>`<div class="match"><b>${esc(m.homeTeam?.name)} – ${esc(m.awayTeam?.name)}</b><p class="muted">${esc(m.competition?.name)} · ${esc(m.utcDate)}</p><button onclick="analyze(${Number(m.id)})">Analiz et</button><button onclick="send(${Number(m.id)})">Telegram'a gönder</button><span id="state-${Number(m.id)}"></span></div>`).join('')||'<p>Bu tarih için maç bulunamadı.</p>';update()}catch(e){el('mode').textContent=e.message}}
-function update(){el('total').textContent=games.length;el('analyzed').textContent=done;el('success').textContent=ok;el('failed').textContent=bad;el('progress').textContent=`${done}/${games.length} maç işlendi`}
-async function analyze(id){try{let r=await api('/api/analyze/'+id);if(!results[id]){done++;if(r.status==='complete')ok++;else bad++}results[id]=r;el('state-'+id).textContent=r.status==='complete'?' ✓ Tamamlandı':' ⚠ Eksik veri';el('details').textContent=JSON.stringify(r,null,2)}catch(e){if(!results[id]){done++;bad++}results[id]={error:e.message};el('state-'+id).textContent=' ✕ '+e.message;el('details').textContent=e.message}update()}
-async function analyzeAll(){for(const m of games)await analyze(m.id)}
-async function send(id){try{if(!results[id])await analyze(id);if(results[id]?.error)throw Error('Hatalı analiz gönderilemez');await api('/api/telegram',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({match_id:id})});alert('Telegram mesajı gönderildi')}catch(e){alert(e.message)}}load();
-</script></html>
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Futbol Analiz Merkezi</title>
+<style>
+body{background:#0c1425;color:#edf2ff;font:16px system-ui;margin:0;padding:24px}
+main{max-width:1000px;margin:auto}
+h1{font-size:28px}
+.muted{color:#aebcd2}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.card,.match{background:#19263b;border:1px solid #30405b;border-radius:15px;padding:17px;margin:12px 0}
+.num{font-size:32px;font-weight:750}
+button{background:#2979ff;color:white;border:0;border-radius:9px;padding:11px;cursor:pointer;margin:5px}
+button:disabled{opacity:.5}
+input[type=date]{background:#19263b;color:white;border:1px solid #526785;border-radius:9px;padding:12px;font-size:16px;max-width:100%}
+pre{white-space:pre-wrap;overflow-wrap:anywhere}
+small{color:#aebcd2}
+.error{color:#ffb5b5}
+.good{color:#90e7ac}
+</style>
+</head>
+<body>
+<main>
+<h1>⚽ Dünya Ligleri – Analiz Merkezi</h1>
+<p class="muted" id="mode">Yükleniyor...</p>
+
+<div class="card">
+<label for="matchDate"><b>📅 Maç tarihini seç</b></label>
+<p><input type="date" id="matchDate"></p>
+<button onclick="load()">Seçilen tarihin maçlarını getir</button>
+<button onclick="today()">Bugün</button>
+</div>
+
+<div class="cards">
+<div class="card">Toplam maç<div class="num" id="total">0</div></div>
+<div class="card">Analiz edilen<div class="num" id="analyzed">0</div></div>
+<div class="card">Tamamlanan<div class="num" id="success">0</div></div>
+<div class="card">Hatalı / eksik<div class="num" id="failed">0</div></div>
+</div>
+
+<button onclick="load()">Maçları yenile</button>
+<button onclick="analyzeAll()">Tümünü analiz et</button>
+<p id="progress" class="muted"></p>
+<section id="matches"></section>
+
+<h2>Analiz ayrıntıları</h2>
+<div class="card">
+<pre id="details">Bir maçın analizini başlatın.</pre>
+</div>
+</main>
+
+<script>
+let games=[],done=0,ok=0,bad=0,results={};
+const el=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({
+'&':'&amp;','<':'&lt;','>':'&gt;',
+'"':'&quot;',"'":'&#39;'
+}[c]));
+
+function localDate(){
+const d=new Date();
+return [
+d.getFullYear(),
+String(d.getMonth()+1).padStart(2,'0'),
+String(d.getDate()).padStart(2,'0')
+].join('-');
+}
+
+function today(){
+el('matchDate').value=localDate();
+load();
+}
+
+async function api(url,options){
+const r=await fetch(url,options);
+const j=await r.json();
+if(!r.ok)throw Error(j.error||'Sunucu hatası');
+return j;
+}
+
+function update(){
+el('total').textContent=games.length;
+el('analyzed').textContent=done;
+el('success').textContent=ok;
+el('failed').textContent=bad;
+el('progress').textContent=`${done}/${games.length} maç işlendi`;
+}
+
+async function load(){
+const date=el('matchDate').value;
+if(!date){alert('Önce tarih seçin');return;}
+el('mode').textContent='Maçlar yükleniyor...';
+el('matches').textContent='';
+games=[];done=ok=bad=0;results={};
+update();
+
+try{
+const d=await api('/api/matches?date='+encodeURIComponent(date));
+if(!Array.isArray(d.matches))throw Error('Geçersiz maç verisi');
+games=d.matches;
+el('mode').textContent=d.demo
+?'DEMO MODU — gerçek veri için API anahtarı gerekli'
+:'CANLI VERİ MODU — '+date;
+
+el('matches').innerHTML=games.map(m=>`
+<div class="match">
+<b>${esc(m.homeTeam?.name)} – ${esc(m.awayTeam?.name)}</b>
+<p class="muted">${esc(m.competition?.name)} · ${esc(m.utcDate)}</p>
+<button onclick="analyze(${Number(m.id)})">Analiz et</button>
+<button onclick="send(${Number(m.id)})">Telegram'a gönder</button>
+<span id="state-${Number(m.id)}"></span>
+</div>
+`).join('')||'<p>Seçilen tarih için maç bulunamadı.</p>';
+update();
+}catch(e){
+el('mode').textContent='Hata: '+e.message;
+el('matches').textContent='Maçlar alınamadı.';
+}
+}
+
+async function analyze(id){
+try{
+const r=await api('/api/analyze/'+id);
+if(!results[id]){
+done++;
+if(r.status==='complete')ok++;
+else bad++;
+}
+results[id]=r;
+el('state-'+id).textContent=r.status==='complete'
+?' ✓ Tamamlandı':' ⚠ Eksik veri';
+el('details').textContent=JSON.stringify(r,null,2);
+}catch(e){
+if(!results[id]){done++;bad++;}
+results[id]={error:e.message};
+el('state-'+id).textContent=' ✕ '+e.message;
+el('details').textContent=e.message;
+}
+update();
+}
+
+async function analyzeAll(){
+for(const m of games)await analyze(m.id);
+}
+
+async function send(id){
+try{
+if(!results[id])await analyze(id);
+if(results[id]?.error)throw Error('Hatalı analiz gönderilemez');
+await api('/api/telegram',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({match_id:id})
+});
+alert('Telegram mesajı gönderildi');
+}catch(e){alert(e.message);}
+}
+
+el('matchDate').value=localDate();
+load();
+</script>
+</body>
+</html>
