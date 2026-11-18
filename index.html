@@ -31,6 +31,7 @@ small{color:#aebcd2}
 <p><input type="date" id="matchDate"></p>
 <button onclick="load()">Seçilen tarihin maçlarını getir</button>
 <button onclick="today()">Bugün</button>
+<button onclick="upcoming()">Önümüzdeki 7 günün maçlarını göster</button>
 </div>
 
 <div class="cards">
@@ -88,6 +89,36 @@ el('failed').textContent=bad;
 el('progress').textContent=`${done}/${games.length} maç işlendi`;
 }
 
+async function upcoming(){
+el('mode').textContent='Önümüzdeki 7 gün taranıyor...';
+el('matches').textContent='';
+games=[];done=ok=bad=0;results={};update();
+const start=new Date(localDate()+'T12:00:00');
+let errors=[];
+for(let i=0;i<7;i++){
+ const d=new Date(start);d.setDate(d.getDate()+i);
+ const day=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
+ try{
+ const data=await api('/api/matches?date='+day);
+ games.push(...(data.matches||[]));
+ }catch(e){errors.push(day+': '+e.message);}
+}
+games=[...new Map(games.map(m=>[m.id,m])).values()].sort((a,b)=>a.utcDate.localeCompare(b.utcDate));
+renderGames();
+el('mode').textContent=games.length+' maç bulundu (7 gün, veri kaynağının kapsadığı ligler).'+(errors.length?' Bazı günlerde veri hatası oluştu.':'');
+}
+function renderGames(){
+el('matches').innerHTML=games.map(m=>`
+<div class="match">
+<b>${esc(m.homeTeam?.name)} – ${esc(m.awayTeam?.name)}</b>
+<p class="muted">${esc(m.competition?.name)} · ${esc(m.utcDate)}</p>
+<button onclick="analyze(${Number(m.id)})">Analiz et</button>
+<button onclick="send(${Number(m.id)})">Telegram'a gönder</button>
+<span id="state-${Number(m.id)}"></span>
+</div>
+`).join('')||'<p>Bu tarihlerde veri kaynağının kapsadığı maç bulunamadı.</p>';
+update();
+}
 async function load(){
 const date=el('matchDate').value;
 if(!date){alert('Önce tarih seçin');return;}
@@ -104,16 +135,8 @@ el('mode').textContent=d.demo
 ?'DEMO MODU — gerçek veri için API anahtarı gerekli'
 :'CANLI VERİ MODU — '+date;
 
-el('matches').innerHTML=games.map(m=>`
-<div class="match">
-<b>${esc(m.homeTeam?.name)} – ${esc(m.awayTeam?.name)}</b>
-<p class="muted">${esc(m.competition?.name)} · ${esc(m.utcDate)}</p>
-<button onclick="analyze(${Number(m.id)})">Analiz et</button>
-<button onclick="send(${Number(m.id)})">Telegram'a gönder</button>
-<span id="state-${Number(m.id)}"></span>
-</div>
-`).join('')||'<p>Seçilen tarih için maç bulunamadı.</p>';
-update();
+renderGames();
+
 }catch(e){
 el('mode').textContent='Hata: '+e.message;
 el('matches').textContent='Maçlar alınamadı.';
