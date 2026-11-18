@@ -131,7 +131,8 @@ else bad++;
 results[id]=r;
 el('state-'+id).textContent=r.status==='complete'
 ?' ✓ Tamamlandı':' ⚠ Eksik veri';
-el('details').textContent=JSON.stringify(r,null,2);
+const fmt=(label,s)=>!s?label+': Veri alınamadı':label+' — Son '+s.count+' maç\nToplam '+s.scored+' gol attı, '+s.conceded+' gol yedi\nİlk yarı '+s.first_half_scored+' attı, '+s.first_half_conceded+' yedi ('+s.first_half_count+' maç)\n'+s.games.map(g=>g.date+' | '+(g.venue==='home'?'Ev':'Deplasman')+' | '+g.opponent+' | '+g.scored+' attı, '+g.conceded+' yedi | İlk yarı '+(g.first_half_scored??'?')+'-'+(g.first_half_conceded??'?')).join('\n');
+el('details').textContent=fmt(r.home,r.sections?.home_last5)+'\n\n'+fmt(r.away,r.sections?.away_last5)+'\n\nDiğer analiz alanları henüz tamamlanmadı.';
 }catch(e){
 if(!results[id]){done++;bad++;}
 results[id]={error:e.message};
