@@ -81,4 +81,4 @@ class Handler(http.server.BaseHTTPRequestHandler):
             telegram(msg);self.send({'ok':True})
         except Exception as e:self.send({'error':str(e)},400)
 if __name__=='__main__':
-    port=int(os.getenv('PORT','8080'));print('http://localhost:'+str(port));http.server.ThreadingHTTPServer(('127.0.0.1',port),Handler).serve_forever()
+    port=int(os.getenv('PORT','8080'));print('http://localhost:'+str(port));http.server.ThreadingHTTPServer(('0.0.0.0',port),Handler).serve_forever()
