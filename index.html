@@ -74,6 +74,15 @@ button{font-size:12px;padding:8px 10px;margin:3px}
 .analysis-grid .form-chip{min-width:16px;padding:3px;margin:1px}
 .analysis-grid .small-note{font-size:11px;color:#9cb4cb}
 @media(max-width:700px){.analysis-grid{gap:6px}.analysis-grid>.panel{grid-column:span 3}.analysis-grid>.panel.third{grid-column:span 2}.analysis-grid>.panel.full{grid-column:span 6}.analysis-grid .metric{font-size:10px}.analysis-grid .metric b{font-size:11px}.analysis-grid .panel h3{font-size:10px}.analysis-grid .risk-line{font-size:11px}}
+
+/* Son 5 maç kutusu: daha küçük ve dengeli yazılar */
+.analysis-grid>.panel:first-child{font-size:11px}
+.analysis-grid>.panel:first-child h3{font-size:12px}
+.analysis-grid>.panel:first-child .metric{font-size:10px;gap:3px}
+.analysis-grid>.panel:first-child .metric b{font-size:11px;font-weight:650;overflow-wrap:anywhere}
+.analysis-grid>.panel:first-child .form-chip{font-size:9px;min-width:13px;padding:2px;margin:1px}
+.analysis-grid>.panel:first-child small{font-size:9px}
+@media(max-width:700px){.analysis-grid>.panel:first-child{padding:6px}.analysis-grid>.panel:first-child h3{font-size:10px}.analysis-grid>.panel:first-child .metric{font-size:9px}.analysis-grid>.panel:first-child .metric b{font-size:10px}.analysis-grid>.panel:first-child .form-chip{font-size:8px;min-width:11px;padding:2px 1px}}
 </style>
 </head>
 <body>
