@@ -292,6 +292,37 @@ def sportsdb_recent(match, side):
             "first_half_conceded": sum(r["first_half_conceded"] for r in known),
             "first_half_count": len(known)}
 
+def espn_halftime_scores(league, event_id, team_id):
+    """Fetch verified period-one scores; missing periods stay unknown."""
+    if not event_id:
+        return None
+    url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/" +
+           urllib.parse.quote(str(league), safe="") +
+           "/summary?event=" + urllib.parse.quote(str(event_id), safe=""))
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.load(response)
+        header = (data.get("header") or {}).get("competitions") or []
+        competitors = (header[0] if header else {}).get("competitors") or []
+        values = {}
+        for c in competitors:
+            periods = c.get("linescores") or []
+            if not periods:
+                return None
+            first = periods[0]
+            raw = first.get("value", first.get("displayValue"))
+            if raw is None:
+                return None
+            values[str((c.get("team") or {}).get("id"))] = int(float(raw))
+        ours = str(team_id)
+        others = [value for key, value in values.items() if key != ours]
+        if ours in values and len(others) == 1:
+            return values[ours], others[0]
+    except (OSError, ValueError, TypeError, KeyError, IndexError):
+        return None
+    return None
+
 def espn_recent(match, side):
     league = match.get("espn_league")
     team_id = match.get(side + "_espn_id")
@@ -330,14 +361,22 @@ def espn_recent(match, side):
             rows.append({"date": when.date().isoformat(), "opponent": theirs.get("team", {}).get("displayName", "?"),
                          "scored": scored, "conceded": conceded, "first_half_scored": None,
                          "first_half_conceded": None, "venue": ours.get("homeAway", "?"),
-                         "_sort": when.isoformat()})
+                         "_sort": when.isoformat(), "_event_id": event.get("id")})
         except (ValueError, TypeError, KeyError, IndexError):
             continue
     rows.sort(key=lambda x: x["_sort"], reverse=True)
     venue = "home" if side == "home" else "away"
     venue_games = [dict(x) for x in rows if x["venue"] == venue][:5]
     recent_games = [dict(x) for x in rows[:5]]
+    checked = {}
     for row in recent_games + venue_games:
+        event_id = row.get("_event_id")
+        if event_id not in checked:
+            checked[event_id] = espn_halftime_scores(league, event_id, team_id)
+        half = checked[event_id]
+        if half is not None:
+            row["first_half_scored"], row["first_half_conceded"] = half
+        row.pop("_event_id", None)
         row.pop("_sort", None)
     return {"games": recent_games, "venue_games": venue_games,
             "venue_count": len(venue_games),
