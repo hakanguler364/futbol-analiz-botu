@@ -209,7 +209,7 @@ EGYPT_SEASON_20261115 = {
     "Tersana": (12, 13, 9), "WE SC": (12, 16, 11),
 }
 def egypt_season_fallback(name):
-    row = EGYPT_SEASON_20261115.get(name)
+    row = EGYPT_SEASON_20261115.get({"Al Dakhleia": "El Dakhleya"}.get(name, name))
     if not row:
         return None
     played, scored, conceded = row
@@ -221,7 +221,8 @@ def egypt_season_fallback(name):
 def sportsdb_recent(match, side):
     """Best-effort recent completed matches for fixture-only teams; never fabricate scores."""
     name = match[side + "Team"]["name"]
-    aliases = {"WE SC": "Telecom Egypt", "El Entag El Harby": "El Entag El Harby",
+    aliases = {"El Dakhleya": "El Dakhleya", "Al Dakhleia": "El Dakhleya",
+               "WE SC": "Telecom Egypt", "El Entag El Harby": "El Entag El Harby",
                "Al Sekka El Hadid": "El Sekka El Hadid"}
     query = urllib.parse.urlencode({"t": aliases.get(name, name)})
     def get_json(url):
