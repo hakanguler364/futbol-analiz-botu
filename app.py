@@ -199,6 +199,58 @@ def stats(games, team_id):
         "first_half_count": len(known_half)
     }
 
+def sportsdb_recent(match, side):
+    """Best-effort recent completed matches for fixture-only teams; never fabricate scores."""
+    name = match[side + "Team"]["name"]
+    aliases = {"WE SC": "Telecom Egypt", "El Entag El Harby": "El Entag El Harby",
+               "Al Sekka El Hadid": "El Sekka El Hadid"}
+    query = urllib.parse.urlencode({"t": aliases.get(name, name)})
+    def get_json(url):
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return json.load(response)
+    teams = get_json("https://www.thesportsdb.com/api/v1/json/123/searchteams.php?" + query).get("teams") or []
+    normalized = lambda x: re.sub(r"[^a-z0-9]", "", str(x or "").casefold())
+    exact = [t for t in teams if normalized(t.get("strTeam")) == normalized(aliases.get(name, name))]
+    if not exact:
+        return None
+    team_id = str(exact[0].get("idTeam") or "")
+    if not team_id:
+        return None
+    events = get_json("https://www.thesportsdb.com/api/v1/json/123/eventslast.php?id=" + urllib.parse.quote(team_id)).get("results") or []
+    cutoff = match.get("utcDate", "")[:10]
+    rows = []
+    for event in events:
+        day = event.get("dateEvent") or ""
+        if not day or day >= cutoff:
+            continue
+        is_home = str(event.get("idHomeTeam")) == team_id
+        is_away = str(event.get("idAwayTeam")) == team_id
+        if not (is_home or is_away):
+            continue
+        try:
+            hg, ag = int(event["intHomeScore"]), int(event["intAwayScore"])
+        except (ValueError, TypeError, KeyError):
+            continue
+        half_home = half_away = None
+        ht = event.get("strHTScore") or ""
+        found = re.fullmatch(r"\s*(\d+)\s*[-:]\s*(\d+)\s*", ht)
+        if found:
+            half_home, half_away = int(found.group(1)), int(found.group(2))
+        rows.append({"date": day, "opponent": event.get("strAwayTeam" if is_home else "strHomeTeam") or "?",
+                     "scored": hg if is_home else ag, "conceded": ag if is_home else hg,
+                     "first_half_scored": half_home if is_home else half_away,
+                     "first_half_conceded": half_away if is_home else half_home,
+                     "venue": "home" if is_home else "away"})
+    rows.sort(key=lambda row: row["date"], reverse=True)
+    rows = rows[:5]
+    known = [r for r in rows if r["first_half_scored"] is not None and r["first_half_conceded"] is not None]
+    return {"games": rows, "count": len(rows), "scored": sum(r["scored"] for r in rows),
+            "conceded": sum(r["conceded"] for r in rows),
+            "first_half_scored": sum(r["first_half_scored"] for r in known),
+            "first_half_conceded": sum(r["first_half_conceded"] for r in known),
+            "first_half_count": len(known)}
+
 def espn_recent(match, side):
     league = match.get("espn_league")
     team_id = match.get(side + "_espn_id")
@@ -312,7 +364,7 @@ def analyze(match):
             elif team.get("id") is not None:
                 output["sections"][key] = stats(recent(team["id"]), team["id"])
             else:
-                output["sections"][key] = None
+                output["sections"][key] = sportsdb_recent(match, "home" if key == "home_last5" else "away")
         except Exception as exc:
             output["sections"][key] = None
             output["errors"].append(f"{key}: {exc}")
