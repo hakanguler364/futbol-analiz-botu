@@ -102,6 +102,18 @@ def matches(date):
                     items.append(m)
         except Exception:
             pass
+    # Filter women's football from all fixture sources.
+    women_terms = ("women", "woman", "female", "femen", "feminin", "femmin", "frauen", "damen", "kadın", "kadin", "ladies", "wsl", "nwsl", "liga f")
+    def is_womens_match(match):
+        names = [match.get("competition", {}).get("name", ""), match.get("homeTeam", {}).get("name", ""), match.get("awayTeam", {}).get("name", "")]
+        for name in names:
+            lowered = str(name).casefold()
+            if any(term in lowered for term in women_terms):
+                return True
+            if re.search(r"(?<![a-z])(?:w|f)(?![a-z])", lowered):
+                return True
+        return False
+    items = [m for m in items if not is_womens_match(m)]
     items.sort(key=lambda m: m.get("utcDate") or "")
     MATCH_CACHE.setdefault("by_id", {}).update({m["id"]: m for m in items})
     MATCH_CACHE[date] = {"matches": items, "time": time.time()}
