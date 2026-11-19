@@ -122,6 +122,10 @@ def matches(date):
         return False
     items = [m for m in items if not is_womens_match(m)]
     items.sort(key=lambda m: m.get("utcDate") or "")
+    from collections import Counter
+    by_source = dict(Counter(m.get("source", "Football-Data") for m in items))
+    by_league = dict(Counter(m.get("competition", {}).get("name", "?") for m in items))
+    print("FIXTURE_AUDIT " + json.dumps({"date": date, "total": len(items), "sources": by_source, "leagues": by_league}, ensure_ascii=False), flush=True)
     MATCH_CACHE.setdefault("by_id", {}).update({m["id"]: m for m in items})
     MATCH_CACHE[date] = {"matches": items, "time": time.time()}
     return items, False
