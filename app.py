@@ -199,6 +199,25 @@ def stats(games, team_id):
         "first_half_count": len(known_half)
     }
 
+# Published Egyptian Division 2 A standings snapshot, 15 November 2026.
+# Season totals are not last-five results; use only as an explicitly labeled fallback.
+EGYPT_SEASON_20261115 = {
+    "Baladiyat El Mahalla": (12, 10, 11), "Haras El Hodood": (12, 15, 7),
+    "El Dakhleya": (12, 9, 16), "Ismaily": (11, 13, 15),
+    "La Viena": (12, 7, 14), "Al Sekka El Hadid": (12, 19, 16),
+    "Pharco": (12, 18, 12), "El Entag El Harby": (12, 19, 16),
+    "Tersana": (12, 13, 9), "WE SC": (12, 16, 11),
+}
+def egypt_season_fallback(name):
+    row = EGYPT_SEASON_20261115.get(name)
+    if not row:
+        return None
+    played, scored, conceded = row
+    return {"games": [], "count": played, "scored": scored, "conceded": conceded,
+            "first_half_scored": 0, "first_half_conceded": 0, "first_half_count": 0,
+            "data_scope": "season", "data_as_of": "2026-11-15",
+            "source_url": "https://stadiro.com/leagues/egypt/division-2-a/"}
+
 def sportsdb_recent(match, side):
     """Best-effort recent completed matches for fixture-only teams; never fabricate scores."""
     name = match[side + "Team"]["name"]
@@ -364,7 +383,10 @@ def analyze(match):
             elif team.get("id") is not None:
                 output["sections"][key] = stats(recent(team["id"]), team["id"])
             else:
-                output["sections"][key] = sportsdb_recent(match, "home" if key == "home_last5" else "away")
+                recent_data = sportsdb_recent(match, "home" if key == "home_last5" else "away")
+                if (not recent_data or recent_data.get("count", 0) < 5) and match.get("competition", {}).get("name") == "Egyptian Second Division A" and match.get("utcDate", "")[:10] == "2026-11-19":
+                    recent_data = egypt_season_fallback(team.get("name")) or recent_data
+                output["sections"][key] = recent_data
         except Exception as exc:
             output["sections"][key] = None
             output["errors"].append(f"{key}: {exc}")
