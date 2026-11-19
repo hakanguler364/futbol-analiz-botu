@@ -43,7 +43,7 @@ small{color:#aebcd2}
 <button onclick="analyzeAll()">Tümünü analiz et</button>
 <p id="progress" class="muted"></p>
 <div class="card"><label for="leagueFilter"><b>🏆 Lig seç</b></label><p><select id="leagueFilter" onchange="renderGames()" style="background:#19263b;color:white;border:1px solid #526785;border-radius:9px;padding:12px;width:100%;max-width:450px"><option value="">Tüm ligler</option></select></p><p id="leagueSummary" class="muted"></p></div>
-<section id="matches"></section>
+<p class="muted">Maçlar Türkiye saatine göre erken başlayandan geç başlayana sıralanır.</p><section id="matches"></section>
 
 <h2>Analiz ayrıntıları</h2>
 <div class="card">
@@ -70,6 +70,7 @@ const leagueTR={
 'FIFA World Cup':'FIFA Dünya Kupası','International Friendly':'Hazırlık Maçı',
 'Major League Soccer':'ABD MLS','Brazilian Serie A':'Brezilya Serie A','Argentine Liga Profesional de Fútbol':'Arjantin 1. Lig'
 };
+function kickoffTR(value){if(!value)return 'Saat bilinmiyor';const d=new Date(value);return Number.isNaN(d.getTime())?'Saat bilinmiyor':new Intl.DateTimeFormat('tr-TR',{timeZone:'Europe/Istanbul',hour:'2-digit',minute:'2-digit',hour12:false}).format(d);}
 function trLeague(name){const raw=String(name||'Bilinmeyen lig');return leagueTR[raw]||raw.replace(/^Turkish /,'Türkiye ').replace(/^English /,'İngiltere ').replace(/^Spanish /,'İspanya ').replace(/^German /,'Almanya ').replace(/^Italian /,'İtalya ').replace(/^French /,'Fransa ').replace(/^Portuguese /,'Portekiz ').replace(/^Dutch /,'Hollanda ').replace(/^Belgian /,'Belçika ').replace(/^Scottish /,'İskoçya ').replace(/^Brazilian /,'Brezilya ').replace(/^Argentine /,'Arjantin ').replace(/^Saudi /,'Suudi Arabistan ').replace(/^Japanese /,'Japonya ').replace(/^Korean /,'Güney Kore ').replace(/^Australian /,'Avustralya ');}
 function localDate(){
 const d=new Date();
@@ -102,11 +103,11 @@ el('progress').textContent=`${done}/${games.length} maç işlendi`;
 
 function renderGames(){
 const selected=el('leagueFilter').value;
-const filtered=games.filter(m=>!selected||(m.competition?.name||'Bilinmeyen lig')===selected);
+const filtered=games.filter(m=>!selected||(m.competition?.name||'Bilinmeyen lig')===selected).sort((a,b)=>new Date(a.utcDate||0)-new Date(b.utcDate||0));
 el('matches').innerHTML=filtered.map(m=>`
 <div class="match">
-<b>${esc(m.homeTeam?.name)} – ${esc(m.awayTeam?.name)}</b>
-<p class="muted">🏆 <b>${esc(trLeague(m.competition?.name))}</b> · ${esc(m.utcDate)}</p>
+<b>🕒 ${esc(kickoffTR(m.utcDate))} — ${esc(m.homeTeam?.name)} – ${esc(m.awayTeam?.name)}</b>
+<p class="muted">🏆 <b>${esc(trLeague(m.competition?.name))}</b> · Türkiye saati</p>
 <button onclick="analyze(${Number(m.id)})">Analiz et</button>
 <button onclick="send(${Number(m.id)})">Telegram'a gönder</button>
 <span id="state-${Number(m.id)}"></span>
@@ -125,7 +126,7 @@ update();
 try{
 const d=await api('/api/matches?date='+encodeURIComponent(date));
 if(!Array.isArray(d.matches))throw Error('Geçersiz maç verisi');
-games=d.matches;
+games=d.matches.sort((a,b)=>new Date(a.utcDate||0)-new Date(b.utcDate||0));
 const counts={};for(const m of games){const league=m.competition?.name||'Bilinmeyen lig';counts[league]=(counts[league]||0)+1;}
 const leagueNames=Object.keys(counts).sort((a,b)=>trLeague(a).localeCompare(trLeague(b),'tr'));
 el('leagueFilter').innerHTML='<option value="">Tüm ligler ('+games.length+' maç)</option>'+leagueNames.map(name=>'<option value="'+esc(name)+'">'+esc(trLeague(name))+' ('+counts[name]+' maç)</option>').join('');
