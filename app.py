@@ -247,8 +247,6 @@ def sportsdb_recent(match, side):
         is_away = str(event.get("idAwayTeam")) == team_id
         if not (is_home or is_away):
             continue
-        if kickoff_day and str(event.get("dateEvent") or "") >= kickoff_day:
-            continue
         try:
             hg, ag = int(event["intHomeScore"]), int(event["intAwayScore"])
         except (ValueError, TypeError, KeyError):
