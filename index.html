@@ -31,7 +31,6 @@ small{color:#aebcd2}
 <p><input type="date" id="matchDate"></p>
 <button onclick="load()">Seçilen tarihin maçlarını getir</button>
 <button onclick="today()">Bugün</button>
-<button onclick="upcoming()">Önümüzdeki 7 günün maçlarını göster</button>
 </div>
 
 <div class="cards">
@@ -89,24 +88,6 @@ el('failed').textContent=bad;
 el('progress').textContent=`${done}/${games.length} maç işlendi`;
 }
 
-async function upcoming(){
-el('mode').textContent='Önümüzdeki 7 gün taranıyor...';
-el('matches').textContent='';
-games=[];done=ok=bad=0;results={};update();
-const start=new Date(localDate()+'T12:00:00');
-let errors=[];
-for(let i=0;i<7;i++){
- const d=new Date(start);d.setDate(d.getDate()+i);
- const day=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
- try{
- const data=await api('/api/matches?date='+day);
- games.push(...(data.matches||[]));
- }catch(e){errors.push(day+': '+e.message);}
-}
-games=[...new Map(games.map(m=>[m.id,m])).values()].sort((a,b)=>a.utcDate.localeCompare(b.utcDate));
-renderGames();
-el('mode').textContent=games.length+' maç bulundu (7 gün, veri kaynağının kapsadığı ligler).'+(errors.length?' Bazı günlerde veri hatası oluştu.':'');
-}
 function renderGames(){
 el('matches').innerHTML=games.map(m=>`
 <div class="match">
