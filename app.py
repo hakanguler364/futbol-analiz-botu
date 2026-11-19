@@ -390,8 +390,8 @@ def espn_head_to_head(match):
         except (ValueError, TypeError, KeyError, StopIteration, IndexError):
             continue
     games.sort(key=lambda g: g["date"], reverse=True)
-    games = games[:10]
     venue_games = [g for g in games if g["at_home"]][:5]
+    games = games[:10]
     return {"venue_last5": {"count": len(venue_games), "home_wins": sum(g["winner"] == "home" for g in venue_games), "away_wins": sum(g["winner"] == "away" for g in venue_games), "draws": sum(g["winner"] == "draw" for g in venue_games)}, "count": len(games), "home_wins": sum(g["winner"] == "home" for g in games),
             "away_wins": sum(g["winner"] == "away" for g in games),
             "draws": sum(g["winner"] == "draw" for g in games), "games": games}
@@ -448,8 +448,8 @@ def sportsdb_head_to_head(match):
                       "away_goals": ag, "winner": "home" if hg > ag else "away" if ag > hg else "draw"})
     games = list({(g["date"], g["home_goals"], g["away_goals"]): g for g in games}.values())
     games.sort(key=lambda g: g["date"], reverse=True)
-    games = games[:10]
     venue_games = [g for g in games if g["at_home"]][:5]
+    games = games[:10]
     return {"venue_last5": {"count": len(venue_games), "home_wins": sum(g["winner"] == "home" for g in venue_games), "away_wins": sum(g["winner"] == "away" for g in venue_games), "draws": sum(g["winner"] == "draw" for g in venue_games)}, "count": len(games), "home_wins": sum(g["winner"] == "home" for g in games),
             "away_wins": sum(g["winner"] == "away" for g in games),
             "draws": sum(g["winner"] == "draw" for g in games), "games": games,
