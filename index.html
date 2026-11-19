@@ -83,7 +83,7 @@ button{font-size:12px;padding:8px 10px;margin:3px}
 
 <div class="card">
 <label for="matchDate"><b>📅 Maç tarihini seç</b></label>
-<p><input type="date" id="matchDate"></p>
+<p><input type="date" id="matchDate" onchange="load()"></p>
 <button onclick="today()">Günlük maçları getir</button>
 </div>
 
@@ -95,9 +95,9 @@ button{font-size:12px;padding:8px 10px;margin:3px}
 </div>
 
 <button onclick="load()">Maçları yenile</button>
-<button onclick="analyzeAll()">Analizleri yeniden hesapla</button>
+<button onclick="analyzeAll()">Analizleri yenile</button>
 <p id="progress" class="muted"></p>
-<div class="card"><label for="leagueFilter"><b>🏆 Lig seç</b></label><p><select id="leagueFilter" onchange="renderGames()" style="background:#19263b;color:white;border:1px solid #526785;border-radius:9px;padding:12px;width:100%;max-width:450px"><option value="">Tüm ligler</option></select></p><p id="leagueSummary" class="muted"></p></div>
+<div class="card"><label for="leagueFilter"><b>🏆 Lig seç</b></label><p><select id="leagueFilter" onchange="renderGames();analyzeAll()" style="background:#19263b;color:white;border:1px solid #526785;border-radius:9px;padding:12px;width:100%;max-width:450px"><option value="">Tüm ligler</option></select></p><p id="leagueSummary" class="muted"></p></div>
 <p class="muted">Maçlar Türkiye saatine göre erken başlayandan geç başlayana sıralanır.</p><section id="matches"></section>
 
 <h2>Analiz ayrıntıları</h2>
@@ -163,9 +163,9 @@ el('matches').innerHTML=filtered.map(m=>`
 <div class="match">
 <div class="match-head"><b>🕒 ${esc(kickoffTR(m.utcDate))}</b><span class="muted">⚽ Maç Analizi</span></div><div class="team-versus"><span>${esc(m.homeTeam?.name)}</span><span>VS</span><span>${esc(m.awayTeam?.name)}</span></div>
 <p class="muted">🏆 <b>${esc(trLeague(m.competition?.name))}</b> · Türkiye saati</p>
-<button onclick="analyze('${esc(m.id)}')">Analiz et</button>
+
 <button onclick="send('${esc(m.id)}')">Telegram'a gönder</button>
-<div id="state-${esc(m.id)}" class="muted">Analiz bekleniyor</div>
+<div id="state-${esc(m.id)}" class="muted">${results[m.id]?.error ? "Analiz alınamadı: "+esc(results[m.id].error) : results[m.id] ? "Analiz hazır" : "⏳ Otomatik analiz hazırlanıyor..."}</div>
 </div>
 `).join('')||'<p>Bu tarihlerde veri kaynağının kapsadığı maç bulunamadı.</p>';
 update();
@@ -191,7 +191,7 @@ el('mode').textContent=d.demo
 :'CANLI VERİ MODU — '+date;
 
 renderGames();
-analyzeAll();
+await analyzeAll();
 
 }catch(e){
 el('mode').textContent='Hata: '+e.message;
@@ -272,9 +272,20 @@ update();
 
 async function analyzeAll(){
 const current=++runId;
-const queue=[...games];
-async function worker(){while(queue.length&&current===runId){const m=queue.shift();await analyze(m.id);}}
-await Promise.all(Array.from({length:4},worker));
+const selected=el('leagueFilter').value;
+const visible=games.filter(m=>!selected||(m.competition?.name||'Bilinmeyen lig')===selected);
+const queue=[...visible,...games.filter(m=>!visible.includes(m))].filter(m=>!results[m.id]);
+el('progress').textContent='⏳ Otomatik analiz sürüyor: '+done+'/'+games.length;
+async function worker(){
+ while(queue.length&&current===runId){
+  const m=queue.shift();
+  const node=el('state-'+m.id);
+  if(node)node.textContent='⏳ Analiz yapılıyor...';
+  await analyze(m.id);
+ }
+}
+await Promise.all(Array.from({length:3},worker));
+if(current===runId)el('progress').textContent='Otomatik analiz tamamlandı: '+done+'/'+games.length+' maç';
 }
 
 async function send(id){
