@@ -165,7 +165,9 @@ state.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px"
 }else state.textContent='⚠ Veri yetersiz — doğrulanmış puan hesaplanamadı';
 }
 const fmt=(label,s)=>!s?label+': Veri alınamadı':label+' — Son '+s.count+' maç\nToplam '+s.scored+' gol attı, '+s.conceded+' gol yedi\nİlk yarı '+s.first_half_scored+' attı, '+s.first_half_conceded+' yedi ('+s.first_half_count+' maç)\n'+s.games.map(g=>g.date+' | '+(g.venue==='home'?'Ev':'Deplasman')+' | '+g.opponent+' | '+g.scored+' attı, '+g.conceded+' yedi | İlk yarı '+(g.first_half_scored??'?')+'-'+(g.first_half_conceded??'?')).join('\n');
-el('details').textContent=fmt(r.home,r.sections?.home_last5)+'\n\n'+fmt(r.away,r.sections?.away_last5)+'\n\nDiğer analiz alanları henüz tamamlanmadı.';
+const h=r.sections?.head_to_head_last10;
+const h2h=!h?'İkili rekabet: Veri alınamadı':('İkili rekabet — bulunan son '+h.count+' maç\n'+r.home+' galibiyet: '+h.home_wins+' | Beraberlik: '+h.draws+' | '+r.away+' galibiyet: '+h.away_wins+'\n'+h.games.map(g=>g.date+' | '+r.home+' '+g.home_goals+'-'+g.away_goals+' '+r.away).join('\n'));
+el('details').textContent=h2h+'\n\n'+fmt(r.home,r.sections?.home_last5)+'\n\n'+fmt(r.away,r.sections?.away_last5)+'\n\nDiğer analiz alanları henüz tamamlanmadı.';
 }catch(e){
 if(!results[id]){done++;bad++;}
 results[id]={error:e.message};
