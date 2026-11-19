@@ -160,11 +160,17 @@ def matches(date):
     MATCH_CACHE[date] = {"matches": items, "time": time.time()}
     return items, False
 
+def season_start(date_text):
+    """Season boundary: July for cross-year leagues; January for calendar-year leagues."""
+    day = str(date_text)[:10]
+    year, month = int(day[:4]), int(day[5:7])
+    return f"{year if month >= 7 else year - 1}-07-01"
+
 def recent(team_id):
-    query = urllib.parse.urlencode({"status": "FINISHED", "limit": 5})
+    query = urllib.parse.urlencode({"status": "FINISHED", "limit": 100})
     data = fetch(f"/teams/{team_id}/matches?{query}")
     return sorted(data.get("matches", []),
-                  key=lambda x: x.get("utcDate", ""), reverse=True)[:5]
+                  key=lambda x: x.get("utcDate", ""), reverse=True)
 
 def stats(games, team_id):
     result = []
@@ -283,8 +289,8 @@ def sportsdb_recent(match, side):
     rows = list({(r["date"], r["opponent"], r["venue"], r["scored"], r["conceded"]): r for r in rows}.values())
     rows.sort(key=lambda row: row["date"], reverse=True)
     venue = "home" if side == "home" else "away"
-    venue_games = [r for r in rows if r["venue"] == venue][:5]
-    rows = rows[:5]
+    venue_games = [r for r in rows if r["venue"] == venue and r["date"] >= season_start(match["utcDate"])]
+    rows = [r for r in rows if r["date"] >= season_start(match["utcDate"])]
     known = [r for r in rows if r["first_half_scored"] is not None and r["first_half_conceded"] is not None]
     return {"games": rows, "venue_games": venue_games, "venue_count": len(venue_games), "venue_scored": sum(r["scored"] for r in venue_games), "venue_conceded": sum(r["conceded"] for r in venue_games), "count": len(rows), "scored": sum(r["scored"] for r in rows),
             "conceded": sum(r["conceded"] for r in rows),
@@ -366,10 +372,10 @@ def espn_recent(match, side):
             continue
     rows.sort(key=lambda x: x["_sort"], reverse=True)
     venue = "home" if side == "home" else "away"
-    venue_games = [dict(x) for x in rows if x["venue"] == venue][:5]
-    recent_games = [dict(x) for x in rows[:5]]
+    venue_games = [dict(x) for x in rows if x["venue"] == venue and x["date"] >= season_start(match["utcDate"])]
+    recent_games = [dict(x) for x in rows if x["date"] >= season_start(match["utcDate"])]
     checked = {}
-    for row in recent_games + venue_games:
+    for row in venue_games:
         event_id = row.get("_event_id")
         if event_id not in checked:
             checked[event_id] = espn_halftime_scores(league, event_id, team_id)
