@@ -29,8 +29,7 @@ small{color:#aebcd2}
 <div class="card">
 <label for="matchDate"><b>📅 Maç tarihini seç</b></label>
 <p><input type="date" id="matchDate"></p>
-<button onclick="load()">Seçilen tarihin maçlarını getir</button>
-<button onclick="today()">Bugün</button>
+<button onclick="today()">Günlük maçları getir</button>
 </div>
 
 <div class="cards">
@@ -164,7 +163,7 @@ alert('Telegram mesajı gönderildi');
 }
 
 el('matchDate').value=localDate();
-load();
+today();
 </script>
 </body>
 </html>
