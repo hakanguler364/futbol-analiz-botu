@@ -83,6 +83,12 @@ button{font-size:12px;padding:8px 10px;margin:3px}
 .analysis-grid>.panel:first-child .form-chip{font-size:9px;min-width:13px;padding:2px;margin:1px}
 .analysis-grid>.panel:first-child small{font-size:9px}
 @media(max-width:700px){.analysis-grid>.panel:first-child{padding:6px}.analysis-grid>.panel:first-child h3{font-size:10px}.analysis-grid>.panel:first-child .metric{font-size:9px}.analysis-grid>.panel:first-child .metric b{font-size:10px}.analysis-grid>.panel:first-child .form-chip{font-size:8px;min-width:11px;padding:2px 1px}}
+
+/* Son beş maç: takım isimleri belirgin, sonuç rozetleri küçük */
+.analysis-grid>.panel:first-child .form-team-row{align-items:center;flex-wrap:wrap;row-gap:4px}
+.analysis-grid>.panel:first-child .form-team-name{font-size:16px;font-weight:850;color:#55c7ff;line-height:1.2;overflow-wrap:anywhere;text-shadow:0 0 8px #167bb344}
+.analysis-grid>.panel:first-child .form-team-row:nth-of-type(2) .form-team-name{color:#ffc75b;text-shadow:0 0 8px #b87b2644}
+@media(max-width:700px){.analysis-grid>.panel:first-child .form-team-name{font-size:14px!important}}
 </style>
 </head>
 <body>
@@ -242,7 +248,7 @@ const general='<div class="inner"><h3>🏆 Genel Öneriler</h3>'+bar('1,5 Üst',
 const other='<div class="inner"><h3>📋 İlk Yarı Takım Puanları</h3>'+bar('Ev gol atma',pct(a,'home','first_half_scored'))+bar('Dep gol atma',pct(b,'away','first_half_scored'))+bar('Ev gol yeme',pct(a,'home','first_half_conceded'))+bar('Dep gol yeme',pct(b,'away','first_half_conceded'))+'<small>Eksik ilk yarı verisinde tahmini puan kullanılır</small></div>';
 const avg=(s,field)=>valid(s)?(s[field]/s.count):null;
 const fmtAvg=v=>v===null?'Veri yok':v.toFixed(2).replace('.',',');
-const formRow=(name,s)=>{const g=(s?.games||[]).slice(0,5);return '<div class="metric"><b>'+esc(name)+'</b><span>'+ (g.length?g.map(x=>{const won=x.scored>x.conceded,draw=x.scored===x.conceded;return '<span class="form-chip '+(won?'form-win':draw?'form-draw':'form-loss')+'">'+(won?'G':draw?'B':'M')+'</span>';}).join(''):'<small>Son 5 sonuç yok</small>')+'</span></div>';};
+const formRow=(name,s)=>{const g=(s?.games||[]).slice(0,5);return '<div class="metric form-team-row"><b class="form-team-name">'+esc(name)+'</b><span>'+ (g.length?g.map(x=>{const won=x.scored>x.conceded,draw=x.scored===x.conceded;return '<span class="form-chip '+(won?'form-win':draw?'form-draw':'form-loss')+'">'+(won?'G':draw?'B':'M')+'</span>';}).join(''):'<small>Son 5 sonuç yok</small>')+'</span></div>';};
 const teamPanel='<div class="panel"><h3>📊 Son 5 Maç Performansı</h3>'+formRow(r.home,a)+formRow(r.away,b)+'<small>Yalnızca doğrulanmış maç sonuçları</small></div>';
 const goalsPanel='<div class="panel"><h3>⚽ Gol İstatistikleri (Genel)</h3><table class="compact-table"><tr><th>Takım</th><th>Attı</th><th>Yedi</th><th>Ort. Attı</th><th>Ort. Yedi</th></tr>'+[[r.home,a],[r.away,b]].map(([n,x])=>'<tr><td>'+esc(n)+'</td><td>'+(valid(x)?x.scored:'—')+'</td><td>'+(valid(x)?x.conceded:'—')+'</td><td>'+fmtAvg(avg(x,'scored'))+'</td><td>'+fmtAvg(avg(x,'conceded'))+'</td></tr>').join('')+'</table><small>Veri kapsamı: '+(a?.count??0)+' / '+(b?.count??0)+' maç</small></div>';
 const venueSummary=(s,venue)=>{const g=(s?.games||[]).filter(x=>x.venue===venue).slice(0,5);return g.length?g.filter(x=>x.scored>x.conceded).length+'G '+g.filter(x=>x.scored===x.conceded).length+'B '+g.filter(x=>x.scored<x.conceded).length+'M':'Veri yok';};
