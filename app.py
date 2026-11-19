@@ -226,6 +226,50 @@ def espn_recent(match, side):
             "conceded": sum(x["conceded"] for x in rows), "count": len(rows),
             "first_half_scored": 0, "first_half_conceded": 0, "first_half_count": 0}
 
+def espn_head_to_head(match):
+    league = match.get("espn_league")
+    home_id, away_id = match.get("home_espn_id"), match.get("away_espn_id")
+    if not league or not home_id or not away_id:
+        return None
+    kickoff = datetime.datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
+    url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/" +
+           urllib.parse.quote(str(league), safe="") + "/teams/" +
+           urllib.parse.quote(str(home_id), safe="") + "/schedule?limit=300")
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=12) as response:
+        data = json.load(response)
+    games = []
+    for event in data.get("events", []):
+        try:
+            when = datetime.datetime.fromisoformat(event.get("date", "").replace("Z", "+00:00"))
+            if when >= kickoff:
+                continue
+            comp = (event.get("competitions") or [{}])[0]
+            status = comp.get("status") or event.get("status") or {}
+            if not (status.get("type") or {}).get("completed", False):
+                continue
+            teams = comp.get("competitors") or []
+            ids = {str(t.get("team", {}).get("id")) for t in teams}
+            if ids != {str(home_id), str(away_id)}:
+                continue
+            home = next(t for t in teams if str(t.get("team", {}).get("id")) == str(home_id))
+            away = next(t for t in teams if str(t.get("team", {}).get("id")) == str(away_id))
+            def score(team):
+                value = team.get("score")
+                if isinstance(value, dict):
+                    value = value.get("value", value.get("displayValue"))
+                return int(float(value))
+            hg, ag = score(home), score(away)
+            games.append({"date": when.date().isoformat(), "home_goals": hg,
+                          "away_goals": ag, "winner": "home" if hg > ag else "away" if ag > hg else "draw"})
+        except (ValueError, TypeError, KeyError, StopIteration, IndexError):
+            continue
+    games.sort(key=lambda g: g["date"], reverse=True)
+    games = games[:10]
+    return {"count": len(games), "home_wins": sum(g["winner"] == "home" for g in games),
+            "away_wins": sum(g["winner"] == "away" for g in games),
+            "draws": sum(g["winner"] == "draw" for g in games), "games": games}
+
 def analyze(match):
     home, away = match["homeTeam"], match["awayTeam"]
     output = {
@@ -248,7 +292,12 @@ def analyze(match):
         except Exception as exc:
             output["sections"][key] = None
             output["errors"].append(f"{key}: {exc}")
-    for key in ("head_to_head_last10", "standings", "league_goals",
+    try:
+        output["sections"]["head_to_head_last10"] = espn_head_to_head(match)
+    except Exception as exc:
+        output["sections"]["head_to_head_last10"] = None
+        output["errors"].append(f"head_to_head_last10: {exc}")
+    for key in ("standings", "league_goals",
                 "first_half_scores", "half_time_full_time", "squad_values",
                 "critical_absences", "historical_odds", "coach_changes"):
         output["sections"][key] = None
