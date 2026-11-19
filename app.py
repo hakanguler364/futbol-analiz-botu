@@ -247,6 +247,8 @@ def sportsdb_recent(match, side):
         is_away = str(event.get("idAwayTeam")) == team_id
         if not (is_home or is_away):
             continue
+        if kickoff_day and str(event.get("dateEvent") or "") >= kickoff_day:
+            continue
         try:
             hg, ag = int(event["intHomeScore"]), int(event["intAwayScore"])
         except (ValueError, TypeError, KeyError):
@@ -382,10 +384,24 @@ def sportsdb_head_to_head(match):
     home_id, away_id = lookup(home_name), lookup(away_name)
     if not home_id or not away_id:
         return None
-    url = "https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=" + urllib.parse.quote(str(home_id))
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=9) as response:
-        events = json.load(response).get("results") or []
+    # Search direct historical meetings first; eventslast only contains a handful
+    # of recent fixtures and misses older head-to-head results.
+    urls = [
+        "https://www.thesportsdb.com/api/v1/json/3/eventsh2h.php?" + urllib.parse.urlencode({"id1": home_id, "id2": away_id}),
+        "https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=" + urllib.parse.quote(str(home_id)),
+    ]
+    events = []
+    for url in urls:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=9) as response:
+                payload = json.load(response)
+            for value in payload.values():
+                if isinstance(value, list):
+                    events.extend(e for e in value if isinstance(e, dict) and "idHomeTeam" in e)
+        except (OSError, ValueError, TypeError):
+            continue
+    kickoff_day = str(match.get("utcDate") or "")[:10]
     games = []
     for event in events:
         if str(event.get("idHomeTeam")) != str(home_id) or str(event.get("idAwayTeam")) != str(away_id):
@@ -396,6 +412,7 @@ def sportsdb_head_to_head(match):
             continue
         games.append({"date": event.get("dateEvent") or "", "home_goals": hg,
                       "away_goals": ag, "winner": "home" if hg > ag else "away" if ag > hg else "draw"})
+    games = list({(g["date"], g["home_goals"], g["away_goals"]): g for g in games}.values())
     games.sort(key=lambda g: g["date"], reverse=True)
     games = games[:5]
     return {"count": len(games), "home_wins": sum(g["winner"] == "home" for g in games),
