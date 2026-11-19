@@ -59,6 +59,18 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({
 '"':'&quot;',"'":'&#39;'
 }[c]));
 
+const leagueTR={
+'Turkish Super Lig':'Türkiye Süper Lig','Turkish Süper Lig':'Türkiye Süper Lig','Turkish 1. Lig':'Türkiye 1. Lig','Turkish Cup':'Türkiye Kupası',
+'English Premier League':'İngiltere Premier Lig','Premier League':'İngiltere Premier Lig','English League Championship':'İngiltere Championship','English FA Cup':'İngiltere Federasyon Kupası','English Carabao Cup':'İngiltere Lig Kupası',
+'Spanish LALIGA':'İspanya La Liga','Spanish LaLiga':'İspanya La Liga','Spanish Segunda División':'İspanya 2. Lig','Spanish Copa del Rey':'İspanya Kral Kupası',
+'German Bundesliga':'Almanya Bundesliga','German 2. Bundesliga':'Almanya 2. Bundesliga','German DFB Pokal':'Almanya Kupası',
+'Italian Serie A':'İtalya Serie A','Italian Serie B':'İtalya Serie B','Italian Coppa Italia':'İtalya Kupası',
+'French Ligue 1':'Fransa Ligue 1','French Ligue 2':'Fransa Ligue 2',
+'UEFA Champions League':'UEFA Şampiyonlar Ligi','UEFA Europa League':'UEFA Avrupa Ligi','UEFA Conference League':'UEFA Konferans Ligi','UEFA Nations League':'UEFA Uluslar Ligi',
+'FIFA World Cup':'FIFA Dünya Kupası','International Friendly':'Hazırlık Maçı',
+'Major League Soccer':'ABD MLS','Brazilian Serie A':'Brezilya Serie A','Argentine Liga Profesional de Fútbol':'Arjantin 1. Lig'
+};
+function trLeague(name){const raw=String(name||'Bilinmeyen lig');return leagueTR[raw]||raw.replace(/^Turkish /,'Türkiye ').replace(/^English /,'İngiltere ').replace(/^Spanish /,'İspanya ').replace(/^German /,'Almanya ').replace(/^Italian /,'İtalya ').replace(/^French /,'Fransa ').replace(/^Portuguese /,'Portekiz ').replace(/^Dutch /,'Hollanda ').replace(/^Belgian /,'Belçika ').replace(/^Scottish /,'İskoçya ').replace(/^Brazilian /,'Brezilya ').replace(/^Argentine /,'Arjantin ').replace(/^Saudi /,'Suudi Arabistan ').replace(/^Japanese /,'Japonya ').replace(/^Korean /,'Güney Kore ').replace(/^Australian /,'Avustralya ');}
 function localDate(){
 const d=new Date();
 return [
@@ -94,7 +106,7 @@ const filtered=games.filter(m=>!selected||(m.competition?.name||'Bilinmeyen lig'
 el('matches').innerHTML=filtered.map(m=>`
 <div class="match">
 <b>${esc(m.homeTeam?.name)} – ${esc(m.awayTeam?.name)}</b>
-<p class="muted">🏆 <b>${esc(m.competition?.name||'Bilinmeyen lig')}</b> · ${esc(m.utcDate)}</p>
+<p class="muted">🏆 <b>${esc(trLeague(m.competition?.name))}</b> · ${esc(m.utcDate)}</p>
 <button onclick="analyze(${Number(m.id)})">Analiz et</button>
 <button onclick="send(${Number(m.id)})">Telegram'a gönder</button>
 <span id="state-${Number(m.id)}"></span>
@@ -115,9 +127,9 @@ const d=await api('/api/matches?date='+encodeURIComponent(date));
 if(!Array.isArray(d.matches))throw Error('Geçersiz maç verisi');
 games=d.matches;
 const counts={};for(const m of games){const league=m.competition?.name||'Bilinmeyen lig';counts[league]=(counts[league]||0)+1;}
-const leagueNames=Object.keys(counts).sort((a,b)=>a.localeCompare(b,'tr'));
-el('leagueFilter').innerHTML='<option value="">Tüm ligler ('+games.length+' maç)</option>'+leagueNames.map(name=>'<option value="'+esc(name)+'">'+esc(name)+' ('+counts[name]+' maç)</option>').join('');
-el('leagueSummary').textContent=leagueNames.length+' lig / turnuva: '+leagueNames.map(name=>name+' ('+counts[name]+')').join(' · ');
+const leagueNames=Object.keys(counts).sort((a,b)=>trLeague(a).localeCompare(trLeague(b),'tr'));
+el('leagueFilter').innerHTML='<option value="">Tüm ligler ('+games.length+' maç)</option>'+leagueNames.map(name=>'<option value="'+esc(name)+'">'+esc(trLeague(name))+' ('+counts[name]+' maç)</option>').join('');
+el('leagueSummary').textContent='Yalnızca bu tarihte maç verisi gelen ligler gösterilir. Süper Lig dahil bir lig görünmüyorsa o gün maç olmayabilir veya veri kaynağı maçı getirmemiş olabilir. '+leagueNames.length+' lig / turnuva: '+leagueNames.map(name=>trLeague(name)+' ('+counts[name]+')').join(' · ');
 el('mode').textContent=d.demo
 ?'DEMO MODU — gerçek veri için API anahtarı gerekli'
 :'CANLI VERİ MODU — '+date;
