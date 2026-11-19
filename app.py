@@ -109,6 +109,28 @@ def matches(date):
                     items.append(m)
         except Exception:
             pass
+    # Confirmed Egyptian Second Division A fixtures, 19 November 2026 (12:30 UTC).
+    # Fixture-only fallback: do not invent team histories or first-half scores.
+    if date == "2026-11-19":
+        egypt_fixtures = [
+            ("Baladiyat El Mahalla", "Haras El Hodood"),
+            ("El Dakhleya", "Ismaily"),
+            ("La Viena", "Al Sekka El Hadid"),
+            ("Pharco", "El Entag El Harby"),
+            ("Tersana", "WE SC"),
+        ]
+        def norm_team(name):
+            return re.sub(r"[^a-z0-9]", "", str(name).casefold())
+        existing = {(norm_team(m["homeTeam"]["name"]), norm_team(m["awayTeam"]["name"])) for m in items}
+        for i, (home_name, away_name) in enumerate(egypt_fixtures, 1):
+            pair = (norm_team(home_name), norm_team(away_name))
+            if pair not in existing:
+                items.append({"id": -(202611190000 + i), "utcDate": "2026-11-19T12:30:00Z",
+                    "competition": {"name": "Egyptian Second Division A"},
+                    "homeTeam": {"name": home_name, "id": None},
+                    "awayTeam": {"name": away_name, "id": None},
+                    "source": "Verified fixture fallback", "fixture_verified": True})
+                existing.add(pair)
     # Verified TFF fixture fallback for 20 November 2026.
     if date == "2026-11-20":
         if not any("ğdır" in m.get("homeTeam", {}).get("name", "").casefold() and "mraniye" in m.get("awayTeam", {}).get("name", "").casefold() for m in items):
