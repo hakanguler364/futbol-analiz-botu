@@ -177,6 +177,55 @@ def stats(games, team_id):
         "first_half_count": len(known_half)
     }
 
+def espn_recent(match, side):
+    league = match.get("espn_league")
+    team_id = match.get(side + "_espn_id")
+    if not league or not team_id:
+        return None
+    kickoff = datetime.datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
+    # ESPN team schedule contains previous results and may be season-specific.
+    url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/" +
+           urllib.parse.quote(str(league), safe="") + "/teams/" +
+           urllib.parse.quote(str(team_id), safe="") + "/schedule?limit=300")
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=12) as response:
+        data = json.load(response)
+    rows = []
+    for event in data.get("events", []):
+        try:
+            when = datetime.datetime.fromisoformat(event.get("date", "").replace("Z", "+00:00"))
+            if when >= kickoff:
+                continue
+            competition = (event.get("competitions") or [{}])[0]
+            status = competition.get("status") or event.get("status") or {}
+            status_type = status.get("type") or {}
+            if not status_type.get("completed", False):
+                continue
+            competitors = competition.get("competitors") or []
+            ours = next((c for c in competitors if str(c.get("team", {}).get("id")) == str(team_id)), None)
+            theirs = next((c for c in competitors if str(c.get("team", {}).get("id")) != str(team_id)), None)
+            if not ours or not theirs:
+                continue
+            def score(c):
+                raw = c.get("score")
+                if isinstance(raw, dict):
+                    raw = raw.get("value", raw.get("displayValue"))
+                return int(float(raw))
+            scored, conceded = score(ours), score(theirs)
+            rows.append({"date": when.date().isoformat(), "opponent": theirs.get("team", {}).get("displayName", "?"),
+                         "scored": scored, "conceded": conceded, "first_half_scored": None,
+                         "first_half_conceded": None, "venue": ours.get("homeAway", "?"),
+                         "_sort": when.isoformat()})
+        except (ValueError, TypeError, KeyError, IndexError):
+            continue
+    rows.sort(key=lambda x: x["_sort"], reverse=True)
+    rows = rows[:5]
+    for row in rows:
+        row.pop("_sort", None)
+    return {"games": rows, "scored": sum(x["scored"] for x in rows),
+            "conceded": sum(x["conceded"] for x in rows), "count": len(rows),
+            "first_half_scored": 0, "first_half_conceded": 0, "first_half_count": 0}
+
 def analyze(match):
     home, away = match["homeTeam"], match["awayTeam"]
     output = {
@@ -190,7 +239,7 @@ def analyze(match):
     }
     for key, team in (("home_last5", home), ("away_last5", away)):
         try:
-            output["sections"][key] = stats(recent(team["id"]), team["id"])
+            output["sections"][key] = (espn_recent(match, "home" if key == "home_last5" else "away")\n                if match.get("source") == "ESPN" else\n                stats(recent(team["id"]), team["id"]) if team.get("id") is not None else None)
         except Exception as exc:
             output["sections"][key] = None
             output["errors"].append(f"{key}: {exc}")
