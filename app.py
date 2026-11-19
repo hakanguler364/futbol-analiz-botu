@@ -269,9 +269,11 @@ def sportsdb_recent(match, side):
                      "venue": "home" if is_home else "away"})
     rows = list({(r["date"], r["opponent"], r["venue"], r["scored"], r["conceded"]): r for r in rows}.values())
     rows.sort(key=lambda row: row["date"], reverse=True)
+    venue = "home" if side == "home" else "away"
+    venue_games = [r for r in rows if r["venue"] == venue][:5]
     rows = rows[:5]
     known = [r for r in rows if r["first_half_scored"] is not None and r["first_half_conceded"] is not None]
-    return {"games": rows, "count": len(rows), "scored": sum(r["scored"] for r in rows),
+    return {"games": rows, "venue_games": venue_games, "venue_count": len(venue_games), "venue_scored": sum(r["scored"] for r in venue_games), "venue_conceded": sum(r["conceded"] for r in venue_games), "count": len(rows), "scored": sum(r["scored"] for r in rows),
             "conceded": sum(r["conceded"] for r in rows),
             "first_half_scored": sum(r["first_half_scored"] for r in known),
             "first_half_conceded": sum(r["first_half_conceded"] for r in known),
@@ -456,9 +458,9 @@ def analyze(match):
                 # prevent a clearly labeled, locally available season fallback.
                 egypt_fallback = (match.get("competition", {}).get("name") == "Egyptian Second Division A"
                                   and str(match.get("utcDate") or "")[:10] == "2026-11-19")
-                recent_data = egypt_season_fallback(team.get("name")) if egypt_fallback else None
-                if not recent_data:
-                    recent_data = sportsdb_recent(match, "home" if key == "home_last5" else "away")
+                recent_data = sportsdb_recent(match, "home" if key == "home_last5" else "away")
+                if not recent_data or not recent_data.get("games"):
+                    recent_data = egypt_season_fallback(team.get("name")) if egypt_fallback else recent_data
                 output["sections"][key] = recent_data
         except Exception as exc:
             output["sections"][key] = None
