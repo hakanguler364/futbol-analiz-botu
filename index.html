@@ -40,7 +40,7 @@ small{color:#aebcd2}
 </div>
 
 <button onclick="load()">Maçları yenile</button>
-<button onclick="analyzeAll()">Tümünü analiz et</button>
+<button onclick="analyzeAll()">Analizleri yeniden hesapla</button>
 <p id="progress" class="muted"></p>
 <div class="card"><label for="leagueFilter"><b>🏆 Lig seç</b></label><p><select id="leagueFilter" onchange="renderGames()" style="background:#19263b;color:white;border:1px solid #526785;border-radius:9px;padding:12px;width:100%;max-width:450px"><option value="">Tüm ligler</option></select></p><p id="leagueSummary" class="muted"></p></div>
 <p class="muted">Maçlar Türkiye saatine göre erken başlayandan geç başlayana sıralanır.</p><section id="matches"></section>
@@ -52,7 +52,7 @@ small{color:#aebcd2}
 </main>
 
 <script>
-let games=[],done=0,ok=0,bad=0,results={};
+let games=[],done=0,ok=0,bad=0,results={},runId=0;
 const el=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({
 '&':'&amp;','<':'&lt;','>':'&gt;',
@@ -110,7 +110,7 @@ el('matches').innerHTML=filtered.map(m=>`
 <p class="muted">🏆 <b>${esc(trLeague(m.competition?.name))}</b> · Türkiye saati</p>
 <button onclick="analyze(${Number(m.id)})">Analiz et</button>
 <button onclick="send(${Number(m.id)})">Telegram'a gönder</button>
-<span id="state-${Number(m.id)}"></span>
+<div id="state-${Number(m.id)}" class="muted">Analiz bekleniyor</div>
 </div>
 `).join('')||'<p>Bu tarihlerde veri kaynağının kapsadığı maç bulunamadı.</p>';
 update();
@@ -120,7 +120,7 @@ const date=el('matchDate').value;
 if(!date){alert('Önce tarih seçin');return;}
 el('mode').textContent='Maçlar yükleniyor...';
 el('matches').textContent='';
-games=[];done=ok=bad=0;results={};
+runId++;games=[];done=ok=bad=0;results={};
 update();
 
 try{
@@ -136,6 +136,7 @@ el('mode').textContent=d.demo
 :'CANLI VERİ MODU — '+date;
 
 renderGames();
+analyzeAll();
 
 }catch(e){
 el('mode').textContent='Hata: '+e.message;
@@ -152,8 +153,17 @@ if(r.status==='complete')ok++;
 else bad++;
 }
 results[id]=r;
-el('state-'+id).textContent=r.status==='complete'
-?' ✓ Tamamlandı':' ⚠ Eksik veri';
+const state=el('state-'+id);
+if(state){
+const a=r.sections?.home_last5,b=r.sections?.away_last5;
+if(a?.count>=5&&b?.count>=5){
+const avg=(a.scored+a.conceded+b.scored+b.conceded)/10;
+const p15=Math.max(0,Math.min(99,Math.round((1-Math.exp(-avg)*(1+avg))*100)));
+const p25=Math.max(0,Math.min(99,Math.round((1-Math.exp(-avg)*(1+avg+avg*avg/2))*100)));
+const color=p=>p>=80?'#16a34a':p>=60?'#d97706':'#dc2626';
+state.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px">'+[['1,5 Üst',p15],['2,5 Üst',p25]].map(([label,p])=>'<span style="border:1px solid '+color(p)+';border-radius:8px;padding:6px 9px;color:'+color(p)+'">'+label+' · '+p+' puan</span>').join('')+'</div><small>Son 5 maç gol ortalamasından türetilen model puanı; garanti veya bahis olasılığı değildir.</small>';
+}else state.textContent='⚠ Veri yetersiz — doğrulanmış puan hesaplanamadı';
+}
 const fmt=(label,s)=>!s?label+': Veri alınamadı':label+' — Son '+s.count+' maç\nToplam '+s.scored+' gol attı, '+s.conceded+' gol yedi\nİlk yarı '+s.first_half_scored+' attı, '+s.first_half_conceded+' yedi ('+s.first_half_count+' maç)\n'+s.games.map(g=>g.date+' | '+(g.venue==='home'?'Ev':'Deplasman')+' | '+g.opponent+' | '+g.scored+' attı, '+g.conceded+' yedi | İlk yarı '+(g.first_half_scored??'?')+'-'+(g.first_half_conceded??'?')).join('\n');
 el('details').textContent=fmt(r.home,r.sections?.home_last5)+'\n\n'+fmt(r.away,r.sections?.away_last5)+'\n\nDiğer analiz alanları henüz tamamlanmadı.';
 }catch(e){
@@ -166,7 +176,10 @@ update();
 }
 
 async function analyzeAll(){
-for(const m of games)await analyze(m.id);
+const current=++runId;
+const queue=[...games];
+async function worker(){while(queue.length&&current===runId){const m=queue.shift();await analyze(m.id);}}
+await Promise.all(Array.from({length:4},worker));
 }
 
 async function send(id){
