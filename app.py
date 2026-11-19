@@ -239,7 +239,12 @@ def analyze(match):
     }
     for key, team in (("home_last5", home), ("away_last5", away)):
         try:
-            output["sections"][key] = (espn_recent(match, "home" if key == "home_last5" else "away")\n                if match.get("source") == "ESPN" else\n                stats(recent(team["id"]), team["id"]) if team.get("id") is not None else None)
+            if match.get("source") == "ESPN":
+                output["sections"][key] = espn_recent(match, "home" if key == "home_last5" else "away")
+            elif team.get("id") is not None:
+                output["sections"][key] = stats(recent(team["id"]), team["id"])
+            else:
+                output["sections"][key] = None
         except Exception as exc:
             output["sections"][key] = None
             output["errors"].append(f"{key}: {exc}")
