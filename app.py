@@ -322,12 +322,19 @@ def espn_recent(match, side):
         except (ValueError, TypeError, KeyError, IndexError):
             continue
     rows.sort(key=lambda x: x["_sort"], reverse=True)
-    rows = rows[:5]
-    for row in rows:
+    venue = "home" if side == "home" else "away"
+    venue_games = [dict(x) for x in rows if x["venue"] == venue][:5]
+    recent_games = [dict(x) for x in rows[:5]]
+    for row in recent_games + venue_games:
         row.pop("_sort", None)
-    return {"games": rows, "scored": sum(x["scored"] for x in rows),
-            "conceded": sum(x["conceded"] for x in rows), "count": len(rows),
-            "first_half_scored": 0, "first_half_conceded": 0, "first_half_count": 0}
+    return {"games": recent_games, "venue_games": venue_games,
+            "venue_count": len(venue_games),
+            "venue_scored": sum(x["scored"] for x in venue_games),
+            "venue_conceded": sum(x["conceded"] for x in venue_games),
+            "scored": sum(x["scored"] for x in recent_games),
+            "conceded": sum(x["conceded"] for x in recent_games),
+            "count": len(recent_games), "first_half_scored": 0,
+            "first_half_conceded": 0, "first_half_count": 0}
 
 def espn_head_to_head(match):
     league = match.get("espn_league")
