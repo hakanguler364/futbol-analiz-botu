@@ -383,9 +383,13 @@ def analyze(match):
             elif team.get("id") is not None:
                 output["sections"][key] = stats(recent(team["id"]), team["id"])
             else:
-                recent_data = sportsdb_recent(match, "home" if key == "home_last5" else "away")
-                if (not recent_data or recent_data.get("count", 0) < 5) and match.get("competition", {}).get("name") == "Egyptian Second Division A" and match.get("utcDate", "")[:10] == "2026-11-19":
-                    recent_data = egypt_season_fallback(team.get("name")) or recent_data
+                # TheSportsDB can time out or reject queries. Do not let that
+                # prevent a clearly labeled, locally available season fallback.
+                egypt_fallback = (match.get("competition", {}).get("name") == "Egyptian Second Division A"
+                                  and str(match.get("utcDate") or "")[:10] == "2026-11-19")
+                recent_data = egypt_season_fallback(team.get("name")) if egypt_fallback else None
+                if not recent_data:
+                    recent_data = sportsdb_recent(match, "home" if key == "home_last5" else "away")
                 output["sections"][key] = recent_data
         except Exception as exc:
             output["sections"][key] = None
