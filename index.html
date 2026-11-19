@@ -156,6 +156,7 @@ main,.match,.analysis-grid,.panel,.inner{min-width:0;max-width:100%}
  .team-versus .match-team strong{font-size:clamp(16px,5vw,24px)!important}
  .team-versus .team-badge{width:38px;height:38px}
 }
+.half-mini-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.half-mini{background:#122b43;border:1px solid #31506a;border-radius:7px;text-align:center;padding:5px 2px;font-size:10px;min-width:0}.half-mini strong{display:block;font-size:19px;line-height:1.25}.half-mini small{display:block;font-size:9px}.half-mini-panel{min-width:0}
 </style>
 </head>
 <body>
@@ -301,19 +302,21 @@ const scoreClass=p=>p>=75?'score-green':p>=50?'score-yellow':'score-red';
 const metric=(label,value)=>'<div class="metric"><span>'+label+'</span><b>'+value+'</b></div>';
 const bar=(label,p)=>{if(p===null)return metric(label,'Veri yok');const v=Math.max(0,Math.min(99,Math.round(p)));return '<div class="metric"><span>'+label+'</span><b class="'+scoreClass(v)+'">'+v+' puan</b></div><div class="bar-track"><div class="bar-fill" style="width:'+v+'%;background:'+color(v)+'"></div></div>';};
 const valid=s=>s&&s.data_scope!=='season'&&Number.isFinite(s.count)&&s.count>0;
-const pct=(s,venue,field)=>{const games=(s?.games||[]).filter(g=>g.venue===venue&&Number.isFinite(g[field]));const fallback=(s?.games||[]).filter(g=>Number.isFinite(g[field]));const sample=games.length>=2?games:fallback;if(sample.length>=2)return Math.round(100*sample.filter(g=>g[field]>0).length/sample.length);if(!valid(s))return null;const full=field==='first_half_scored'?'scored':'conceded';return Math.round(100*(1-Math.exp(-.45*s[full]/s.count)));};
+const pct=(s,venue,field)=>{const g=(s?.games||[]).filter(x=>x.venue===venue&&Number.isFinite(x[field]));return g.length?Math.round(100*g.filter(x=>x[field]>0).length/g.length):null;};
+const halfCard=(s,venue,field,label)=>{const g=(s?.games||[]).filter(x=>x.venue===venue&&Number.isFinite(x[field]));const hits=g.filter(x=>x[field]>0).length,total=g.reduce((n,x)=>n+x[field],0),p=g.length?Math.round(100*hits/g.length):null;return '<div class="half-mini"><div>'+label+'</div><strong style="color:'+(p===null?'#9aadc4':p>=75?'#4bea8e':'#ffcf56')+'">'+(p===null?'Veri yok':'%'+p)+'</strong><small>'+(p===null?'İlk yarı skoru bulunamadı':hits+'/'+g.length+' maç · '+total+' gol')+'</small></div>';};
+const halfMini='<div class="panel half-mini-panel"><h3>⏱ İlk Yarı Gol Analizi</h3><div class="half-mini-grid">'+halfCard(a,'home','first_half_scored','Ev · Atma')+halfCard(b,'away','first_half_scored','Dep · Atma')+halfCard(a,'home','first_half_conceded','Ev · Yeme')+halfCard(b,'away','first_half_conceded','Dep · Yeme')+'</div><small>Ev: yalnız iç saha · Dep: yalnız dış saha · %75+ yeşil</small></div>';
 const venueHalf=(s,venue)=>{const g=(s?.games||[]).filter(x=>x.venue===venue&&Number.isFinite(x.first_half_scored)&&Number.isFinite(x.first_half_conceded));return g;};
 const homeHalf=venueHalf(a,'home'),awayHalf=venueHalf(b,'away');
 const halfAll=[...homeHalf,...awayHalf];
 let lambda=null,halfMethod='';
 if(homeHalf.length>=2&&awayHalf.length>=2){lambda=(homeHalf.reduce((n,g)=>n+g.first_half_scored+g.first_half_conceded,0)/homeHalf.length+awayHalf.reduce((n,g)=>n+g.first_half_scored+g.first_half_conceded,0)/awayHalf.length)/2;halfMethod='Gerçek ilk yarı verisi';}
 else if(halfAll.length>=3){lambda=halfAll.reduce((n,g)=>n+g.first_half_scored+g.first_half_conceded,0)/halfAll.length;halfMethod='Sınırlı ilk yarı verisi';}
-else if(valid(a)&&valid(b)){lambda=.45*((a.scored+a.conceded)/a.count+(b.scored+b.conceded)/b.count)/2;halfMethod='Tahmini (90 dk ortalaması)';}
+
 const poissonOver=(l,k)=>l===null?null:100*(1-Math.exp(-l)*Array.from({length:k+1},(_,i)=>{let factorial=1;for(let j=2;j<=i;j++)factorial*=j;return Math.pow(l,i)/factorial;}).reduce((x,y)=>x+y,0));
 const fullLambda=valid(a)&&valid(b)?((a.scored+a.conceded)/a.count+(b.scored+b.conceded)/b.count)/2:null;
 const halfPanel='<div class="inner"><h3>⏱ İlk Yarı Gol Seçenekleri</h3>'+bar('İY 0,5 Üst',poissonOver(lambda,0))+bar('İY 1,5 Üst',poissonOver(lambda,1))+bar('İY 2,5 Üst',poissonOver(lambda,2))+'<small>'+esc(halfMethod||'Yeterli veri yok')+' · Model puanı</small></div>';
 const general='<div class="inner"><h3>🏆 Genel Öneriler</h3>'+bar('1,5 Üst',poissonOver(fullLambda,1))+bar('2,5 Üst',poissonOver(fullLambda,2))+bar('2,5 Alt',fullLambda===null?null:100-poissonOver(fullLambda,2))+'<small>90 dakika gol modeli</small></div>';
-const other='<div class="inner"><h3>📋 İlk Yarı Takım Puanları</h3>'+bar('Ev gol atma',pct(a,'home','first_half_scored'))+bar('Dep gol atma',pct(b,'away','first_half_scored'))+bar('Ev gol yeme',pct(a,'home','first_half_conceded'))+bar('Dep gol yeme',pct(b,'away','first_half_conceded'))+'<small>Eksik ilk yarı verisinde tahmini puan kullanılır</small></div>';
+const other='<div class="inner"><h3>📋 İlk Yarı Takım Puanları</h3>'+bar('Ev gol atma',pct(a,'home','first_half_scored'))+bar('Dep gol atma',pct(b,'away','first_half_scored'))+bar('Ev gol yeme',pct(a,'home','first_half_conceded'))+bar('Dep gol yeme',pct(b,'away','first_half_conceded'))+'<small>Yalnız doğrulanmış ilk yarı maçları kullanılır; yüzde puan değildir.</small></div>';
 const avg=(s,field)=>valid(s)?(s[field]/s.count):null;
 const fmtAvg=v=>v===null?'Veri yok':v.toFixed(2).replace('.',',');
 const formRow=(name,s,side)=>{const g=(s?.games||[]).slice(0,5);return '<div class="metric form-team-row"><b class="form-team-name team-name-'+side+'">'+esc(name)+'</b><span>'+ (g.length?g.map(x=>{const won=x.scored>x.conceded,draw=x.scored===x.conceded;return '<span class="form-chip '+(won?'form-win':draw?'form-draw':'form-loss')+'">'+(won?'G':draw?'B':'M')+'</span>';}).join(''):'<small>Son 5 sonuç yok</small>')+'</span></div>';};
@@ -334,20 +337,20 @@ metric('🚫 KG Yok',venueH.kg_yok+' / '+venueH.count+' — %'+Math.round(100*ve
 '<small>'+venueH.count+'/5 doğrulanmış karşılaşma. Alt/Üst ve KG oranları yalnızca bu sahadaki ikili maçlara dayanır; tahmin garantisi değildir.</small>':
 '<small>Bu sahada doğrulanmış karşılaşma bulunamadı.</small>')+'</div>';
 const homeAttack=avg(a,'scored'),awayConcede=avg(b,'conceded'),awayAttack=avg(b,'scored'),homeConcede=avg(a,'conceded');
-const comparePanel='<div class="panel"><h3>📊 Karşılaştırmalı Analiz (İlk Yarı İçin)</h3>'+[['🏠 Ev sahibi gol atma (Ort.)',homeAttack],['🏠 Ev sahibi gol yeme (Ort.)',homeConcede],['✈️ Deplasman gol atma (Ort.)',awayAttack],['✈️ Deplasman gol yeme (Ort.)',awayConcede]].map(([n,v])=>'<div class="metric"><span>'+n+'</span><b>'+fmtAvg(v)+'</b></div><div class="bar-track"><div class="bar-fill" style="width:'+(v===null?0:Math.min(100,v/2*100))+'%;background:'+(v===null?'#68798e':v<0.85?'#ff7c99':v>=1.25?'#43e982':'#ffe05a')+'"></div></div>').join('')+'<small>Genel maç ortalaması; ilk yarı ortalaması değildir.</small></div>';
+const comparePanel='<div class="panel"><h3>📊 Karşılaştırmalı Analiz (90 Dakika)</h3>'+[['🏠 Ev sahibi gol atma (Ort.)',homeAttack],['🏠 Ev sahibi gol yeme (Ort.)',homeConcede],['✈️ Deplasman gol atma (Ort.)',awayAttack],['✈️ Deplasman gol yeme (Ort.)',awayConcede]].map(([n,v])=>'<div class="metric"><span>'+n+'</span><b>'+fmtAvg(v)+'</b></div><div class="bar-track"><div class="bar-fill" style="width:'+(v===null?0:Math.min(100,v/2*100))+'%;background:'+(v===null?'#68798e':v<0.85?'#ff7c99':v>=1.25?'#43e982':'#ffe05a')+'"></div></div>').join('')+'<small>Genel maç ortalaması; ilk yarı ortalaması değildir.</small></div>';
 const halfScore=poissonOver(lambda,0),generalScore=poissonOver(fullLambda,1);
 const riskReasons=[];
 if(homeAttack!==null&&homeAttack<1)riskReasons.push('❌ Ev sahibinin gol atma ortalaması düşük ('+fmtAvg(homeAttack)+'/maç)');
 if(awayConcede!==null&&awayConcede>=1.25)riskReasons.push('✅ Deplasmanın gol yeme ortalaması yüksek ('+fmtAvg(awayConcede)+'/maç)');
 if(awayConcede!==null&&awayConcede<1)riskReasons.push('⚠️ Deplasmanın gol yeme ortalaması düşük ('+fmtAvg(awayConcede)+'/maç)');
-if(halfMethod!=='Gerçek ilk yarı verisi')riskReasons.push('⚠️ İlk yarı verisi sınırlı; tahmini model kullanıldı');
+if(lambda===null)riskReasons.push('⚠️ İlk yarı için doğrulanmış veri yetersiz; puan gösterilmiyor');
 if(!riskReasons.length)riskReasons.push('ℹ️ Belirgin risk işareti yok; model tahminidir');
-const riskFlag=(homeAttack!==null&&homeAttack<1)||(awayConcede!==null&&awayConcede<1)||halfMethod!=='Gerçek ilk yarı verisi';
+const riskFlag=(homeAttack!==null&&homeAttack<1)||(awayConcede!==null&&awayConcede<1)||lambda===null;
 const riskPanel='<div class="panel risk-panel"><h3>⚠️ RİSK UYARISI</h3>'+riskReasons.map(x=>'<div class="risk-line">'+x+'</div>').join('')+'<div class="recommend"><b>Sonuç:</b> '+(riskFlag?'İlk yarı 0,5 Üst için temkinli değerlendirme gerekiyor.':'Belirgin ek risk uyarısı yok.')+'</div></div>';
 const recommended=[['1,5 Üst',generalScore],['2,5 Alt',fullLambda===null?null:100-poissonOver(fullLambda,2)],['İY 0,5 Üst',halfScore],['İY 1,5 Üst',poissonOver(lambda,1)]].filter(x=>x[1]!==null).sort((x,y)=>y[1]-x[1]);
 const safest=recommended.find(x=>!riskFlag||x[0]!=='İY 0,5 Üst')||recommended[0];
 const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3>'+(safest?'<div class="metric"><span>✅ Daha Güvenli Seçenek</span><b class="score-green">'+safest[0]+' ('+Math.round(safest[1])+' puan)</b></div>':'<p>Öneri için yeterli veri yok</p>')+(halfScore!==null?'<div class="metric"><span>⚠️ Alternatif '+(riskFlag?'(Riskli)':'')+'</span><b class="score-yellow">İY 0,5 Üst ('+Math.round(halfScore)+' puan)</b></div>':'')+'<small>Model puanları kesinlik veya garanti değildir.</small></div>';
-state.innerHTML='<div class="analysis-grid">'+teamPanel+goalsPanel+avgPanel+h2hPanel+venueHPanel+comparePanel+riskPanel+'<div class="panel third">'+general+'</div><div class="panel third">'+halfPanel+'</div><div class="panel third">'+other+'</div>'+systemPanel+'</div>';
+state.innerHTML='<div class="analysis-grid">'+teamPanel+goalsPanel+avgPanel+h2hPanel+venueHPanel+halfMini+comparePanel+riskPanel+'<div class="panel third">'+general+'</div><div class="panel third">'+halfPanel+'</div><div class="panel third">'+other+'</div>'+systemPanel+'</div>';
 renderedAnalyses[id]=state.innerHTML;
 
 
