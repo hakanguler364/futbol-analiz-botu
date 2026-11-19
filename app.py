@@ -458,9 +458,14 @@ def analyze(match):
                 # prevent a clearly labeled, locally available season fallback.
                 egypt_fallback = (match.get("competition", {}).get("name") == "Egyptian Second Division A"
                                   and str(match.get("utcDate") or "")[:10] == "2026-11-19")
-                recent_data = sportsdb_recent(match, "home" if key == "home_last5" else "away")
+                try:
+                    recent_data = sportsdb_recent(match, "home" if key == "home_last5" else "away")
+                except (OSError, ValueError, TypeError, KeyError) as source_error:
+                    output["errors"].append(f"{key} SportsDB: {source_error}")
+                    recent_data = None
                 if not recent_data or not recent_data.get("games"):
-                    recent_data = egypt_season_fallback(team.get("name")) if egypt_fallback else recent_data
+                    fallback = egypt_season_fallback(team.get("name")) if egypt_fallback else None
+                    recent_data = fallback or recent_data
                 output["sections"][key] = recent_data
         except Exception as exc:
             output["sections"][key] = None
