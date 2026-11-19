@@ -61,6 +61,31 @@ def matches(date):
                 items.extend(future.result())
             except Exception:
                 pass
+    # Independent global daily fixture feed; merge with ESPN without replacing it.
+    def sportsdb():
+        url = "https://www.thesportsdb.com/api/v1/json/123/eventsday.php?" + urllib.parse.urlencode({"d": date, "s": "Soccer"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=15) as response:
+            data = json.load(response)
+        out = []
+        for event in data.get("events") or []:
+            home, away = event.get("strHomeTeam"), event.get("strAwayTeam")
+            if not home or not away:
+                continue
+            kickoff = (event.get("strTimestamp") or ((event.get("dateEvent") or date) + "T" + (event.get("strTime") or "00:00:00") + "Z"))
+            uid = int.from_bytes(hashlib.sha256(("sportsdb"+str(event.get("idEvent"))).encode()).digest()[:7], "big")
+            out.append({"id": -uid, "utcDate": kickoff, "competition": {"name": event.get("strLeague") or "Other"}, "homeTeam": {"name": home, "id": None}, "awayTeam": {"name": away, "id": None}, "source": "TheSportsDB", "sportsdb_event_id": event.get("idEvent")})
+        return out
+    try:
+        extra_events = sportsdb()
+        existing = {(m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold()) for m in items}
+        for m in extra_events:
+            pair = (m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold())
+            if pair not in existing:
+                items.append(m)
+                existing.add(pair)
+    except Exception:
+        pass
     if TOKEN:
         try:
             extra = fetch("/matches?" + urllib.parse.urlencode({"dateFrom": date, "dateTo": date})).get("matches", [])
