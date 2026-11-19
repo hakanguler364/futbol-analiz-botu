@@ -42,6 +42,7 @@ small{color:#aebcd2}
 <button onclick="load()">Maçları yenile</button>
 <button onclick="analyzeAll()">Tümünü analiz et</button>
 <p id="progress" class="muted"></p>
+<div class="card"><label for="leagueFilter"><b>🏆 Lig seç</b></label><p><select id="leagueFilter" onchange="renderGames()" style="background:#19263b;color:white;border:1px solid #526785;border-radius:9px;padding:12px;width:100%;max-width:450px"><option value="">Tüm ligler</option></select></p><p id="leagueSummary" class="muted"></p></div>
 <section id="matches"></section>
 
 <h2>Analiz ayrıntıları</h2>
@@ -88,10 +89,12 @@ el('progress').textContent=`${done}/${games.length} maç işlendi`;
 }
 
 function renderGames(){
-el('matches').innerHTML=games.map(m=>`
+const selected=el('leagueFilter').value;
+const filtered=games.filter(m=>!selected||(m.competition?.name||'Bilinmeyen lig')===selected);
+el('matches').innerHTML=filtered.map(m=>`
 <div class="match">
 <b>${esc(m.homeTeam?.name)} – ${esc(m.awayTeam?.name)}</b>
-<p class="muted">${esc(m.competition?.name)} · ${esc(m.utcDate)}</p>
+<p class="muted">🏆 <b>${esc(m.competition?.name||'Bilinmeyen lig')}</b> · ${esc(m.utcDate)}</p>
 <button onclick="analyze(${Number(m.id)})">Analiz et</button>
 <button onclick="send(${Number(m.id)})">Telegram'a gönder</button>
 <span id="state-${Number(m.id)}"></span>
@@ -111,6 +114,10 @@ try{
 const d=await api('/api/matches?date='+encodeURIComponent(date));
 if(!Array.isArray(d.matches))throw Error('Geçersiz maç verisi');
 games=d.matches;
+const counts={};for(const m of games){const league=m.competition?.name||'Bilinmeyen lig';counts[league]=(counts[league]||0)+1;}
+const leagueNames=Object.keys(counts).sort((a,b)=>a.localeCompare(b,'tr'));
+el('leagueFilter').innerHTML='<option value="">Tüm ligler ('+games.length+' maç)</option>'+leagueNames.map(name=>'<option value="'+esc(name)+'">'+esc(name)+' ('+counts[name]+' maç)</option>').join('');
+el('leagueSummary').textContent=leagueNames.length+' lig / turnuva: '+leagueNames.map(name=>name+' ('+counts[name]+')').join(' · ');
 el('mode').textContent=d.demo
 ?'DEMO MODU — gerçek veri için API anahtarı gerekli'
 :'CANLI VERİ MODU — '+date;
