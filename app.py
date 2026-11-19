@@ -34,23 +34,46 @@ def valid_date(value):
 
 def matches(date):
     date = valid_date(date)
-    if not TOKEN:
-        raise ValueError("FOOTBALL_DATA_TOKEN Render ortaminda tanimli degil")
     cached = MATCH_CACHE.get(date)
     if cached and time.time() - cached["time"] < 300:
         return cached["matches"], False
-    query = urllib.parse.urlencode({"dateFrom": date, "dateTo": date})
-    data = fetch("/matches?" + query)
-    items = data.get("matches", [])
-    if not isinstance(items, list):
-        raise ValueError("API yanitinda matches listesi yok")
-    MATCH_CACHE.setdefault("by_id", {}).update(
-        {m["id"]: m for m in items if m.get("id") is not None}
-    )
-    if items:
-        MATCH_CACHE[date] = {"matches": items, "time": time.time()}
-    else:
-        MATCH_CACHE.pop(date, None)
+    import concurrent.futures, hashlib
+    leagues = ["eng.1","eng.2","esp.1","ger.1","ita.1","fra.1","tur.1","tur.2","ned.1","por.1","bel.1","sco.1","usa.1","mex.1","bra.1","arg.1","uefa.champions","uefa.europa","uefa.europa.conf","ksa.1","jpn.1","aus.1"]
+    def get_league(league):
+        url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + date.replace("-", "")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=12) as response:
+            data = json.load(response)
+        found = []
+        for event in data.get("events", []):
+            teams = (event.get("competitions") or [{}])[0].get("competitors", [])
+            home = next((t for t in teams if t.get("homeAway") == "home"), None)
+            away = next((t for t in teams if t.get("homeAway") == "away"), None)
+            if not home or not away:
+                continue
+            uid = int.from_bytes(hashlib.sha256((league+str(event.get("id"))).encode()).digest()[:7], "big")
+            found.append({"id": -uid, "utcDate": event.get("date", date+"T00:00:00Z"), "competition": {"name": league}, "homeTeam": {"name": home.get("team", {}).get("displayName", "?"), "id": None}, "awayTeam": {"name": away.get("team", {}).get("displayName", "?"), "id": None}, "source": "ESPN"})
+        return found
+    items = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        for future in concurrent.futures.as_completed([pool.submit(get_league, league) for league in leagues]):
+            try:
+                items.extend(future.result())
+            except Exception:
+                pass
+    if TOKEN:
+        try:
+            extra = fetch("/matches?" + urllib.parse.urlencode({"dateFrom": date, "dateTo": date})).get("matches", [])
+            existing = {(m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold()) for m in items}
+            for m in extra:
+                pair = (m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold())
+                if pair not in existing:
+                    items.append(m)
+        except Exception:
+            pass
+    items.sort(key=lambda m: m.get("utcDate") or "")
+    MATCH_CACHE.setdefault("by_id", {}).update({m["id"]: m for m in items})
+    MATCH_CACHE[date] = {"matches": items, "time": time.time()}
     return items, False
 
 def recent(team_id):
