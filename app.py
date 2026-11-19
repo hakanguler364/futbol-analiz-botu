@@ -236,7 +236,13 @@ def sportsdb_recent(match, side):
     team_id = str(exact[0].get("idTeam") or "")
     if not team_id:
         return None
-    events = get_json("https://www.thesportsdb.com/api/v1/json/123/eventslast.php?id=" + urllib.parse.quote(team_id)).get("results") or []
+    events = []
+    for endpoint in ("eventslast.php?id=", "eventsseason.php?id="):
+        try:
+            payload = get_json("https://www.thesportsdb.com/api/v1/json/3/" + endpoint + urllib.parse.quote(team_id))
+            events.extend(payload.get("results") or payload.get("events") or [])
+        except (OSError, ValueError, TypeError):
+            continue
     cutoff = match.get("utcDate", "")[:10]
     rows = []
     for event in events:
@@ -261,6 +267,7 @@ def sportsdb_recent(match, side):
                      "first_half_scored": half_home if is_home else half_away,
                      "first_half_conceded": half_away if is_home else half_home,
                      "venue": "home" if is_home else "away"})
+    rows = list({(r["date"], r["opponent"], r["venue"], r["scored"], r["conceded"]): r for r in rows}.values())
     rows.sort(key=lambda row: row["date"], reverse=True)
     rows = rows[:5]
     known = [r for r in rows if r["first_half_scored"] is not None and r["first_half_conceded"] is not None]
