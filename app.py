@@ -31,26 +31,68 @@ def valid_date(value):
     datetime.date.fromisoformat(value)
     return value
 
+
+def open_matchday(date):
+    """Keyless daily-updated fixture dataset (75 competitions; not live)."""
+    root = "https://api.github.com/repos/oladeeayo/open-matchday/contents/data"
+    req = urllib.request.Request(root, headers={"User-Agent": "futbol-analiz-botu", "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req, timeout=25) as response:
+        folders = json.load(response)
+    import csv, io, concurrent.futures, hashlib
+    def one(folder):
+        if folder.get("type") != "dir":
+            return []
+        name = folder["name"]
+        season = "2627"
+        url = "https://raw.githubusercontent.com/oladeeayo/open-matchday/master/data/" + urllib.parse.quote(name) + "/fixtures_" + season + ".csv"
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "futbol-analiz-botu"}), timeout=12) as response:
+                rows = csv.DictReader(io.StringIO(response.read().decode("utf-8-sig")))
+                found = []
+                for row in rows:
+                    if row.get("date") != date or not row.get("home") or not row.get("away"):
+                        continue
+                    uid = int.from_bytes(hashlib.sha256((name+date+row["home"]+row["away"]).encode()).digest()[:7], "big")
+                    found.append({"id": -uid, "utcDate": date+"T"+(row.get("time") or "00:00")+":00Z",
+                        "competition": {"name": name.replace("_", " ")},
+                        "homeTeam": {"name": row["home"], "id": None},
+                        "awayTeam": {"name": row["away"], "id": None},
+                        "source": "open-matchday", "status": "SCHEDULED"})
+                return found
+        except Exception:
+            return []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
+        return [m for group in pool.map(one, folders) for m in group]
+
 def matches(date):
     date = valid_date(date)
-    if not TOKEN:
-        raise ValueError("FOOTBALL_DATA_TOKEN Render ortaminda tanimli degil")
     cached = MATCH_CACHE.get(date)
     if cached and time.time() - cached["time"] < 300:
         return cached["matches"], False
-    query = urllib.parse.urlencode({"dateFrom": date, "dateTo": date})
-    data = fetch("/matches?" + query)
-    items = data.get("matches", [])
-    if not isinstance(items, list):
-        raise ValueError("API yanitinda matches listesi yok")
-    MATCH_CACHE.setdefault("by_id", {}).update(
-        {m["id"]: m for m in items if m.get("id") is not None}
-    )
-    # Bos sonuc kalici olarak onbellege alinmaz.
-    if items:
-        MATCH_CACHE[date] = {"matches": items, "time": time.time()}
-    else:
-        MATCH_CACHE.pop(date, None)
+    items = []
+    errors = []
+    try:
+        items = open_matchday(date)
+    except Exception as exc:
+        errors.append("open-matchday: " + str(exc))
+    if TOKEN:
+        try:
+            query = urllib.parse.urlencode({"dateFrom": date, "dateTo": date})
+            data = fetch("/matches?" + query)
+            extra = data.get("matches", [])
+            existing = {(m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold()) for m in items}
+            for m in extra:
+                pair = (m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold())
+                if pair not in existing:
+                    items.append(m)
+                    existing.add(pair)
+        except Exception as exc:
+            errors.append("football-data.org: " + str(exc))
+    if not items and errors:
+        raise ValueError("; ".join(errors))
+    items.sort(key=lambda m: m.get("utcDate", ""))
+    MATCH_CACHE.setdefault("by_id", {}).update({m["id"]: m for m in items})
+    MATCH_CACHE[date] = {"matches": items, "time": time.time()}
     return items, False
 
 def recent(team_id):
