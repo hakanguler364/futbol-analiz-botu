@@ -108,9 +108,9 @@ el('matches').innerHTML=filtered.map(m=>`
 <div class="match">
 <b>🕒 ${esc(kickoffTR(m.utcDate))} — ${esc(m.homeTeam?.name)} – ${esc(m.awayTeam?.name)}</b>
 <p class="muted">🏆 <b>${esc(trLeague(m.competition?.name))}</b> · Türkiye saati</p>
-<button onclick="analyze(${Number(m.id)})">Analiz et</button>
-<button onclick="send(${Number(m.id)})">Telegram'a gönder</button>
-<div id="state-${Number(m.id)}" class="muted">Analiz bekleniyor</div>
+<button onclick="analyze('${esc(m.id)}')">Analiz et</button>
+<button onclick="send('${esc(m.id)}')">Telegram'a gönder</button>
+<div id="state-${esc(m.id)}" class="muted">Analiz bekleniyor</div>
 </div>
 `).join('')||'<p>Bu tarihlerde veri kaynağının kapsadığı maç bulunamadı.</p>';
 update();
