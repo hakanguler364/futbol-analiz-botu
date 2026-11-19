@@ -37,6 +37,23 @@ button{font-size:12px;padding:8px 10px;margin:3px}
 .panel-wide{grid-column:span 2}
 @media(max-width:700px){.analysis-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.panel{padding:8px}.panel h3{font-size:12px}.metric{font-size:11px}.panel-wide{grid-column:span 2}.cards .card{padding:7px;font-size:10px}.num{font-size:18px}}
 @media(max-width:370px){.analysis-grid{grid-template-columns:1fr}.panel-wide{grid-column:span 1}}
+
+/* Referans görsele yakın kompakt skor paneli */
+.match{border:2px solid #244e75;background:linear-gradient(160deg,#0c2743,#071525);padding:12px}
+.match-head{display:flex;align-items:center;justify-content:space-between}
+.match-title{font-size:clamp(15px,2.5vw,23px);font-weight:800;color:#fff}
+.match-title .versus{color:#8bb3d5;margin:0 10px}
+.analysis-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.panel{border:2px solid #244f76;border-radius:15px;padding:11px;background:linear-gradient(165deg,#102b49,#071629)}
+.panel h3{font-size:clamp(12px,1.5vw,17px);background:#102c4a;margin:-11px -11px 10px;padding:10px 11px;border-radius:12px 12px 0 0}
+.metric{font-size:13px}.metric b{font-size:16px}
+.score-pill{border:1px solid #207c63;background:#073b36;border-radius:10px;padding:5px 10px;color:#4af18c;font-size:20px;font-weight:800}
+.team-versus{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 5px;margin:8px 0;border:1px solid #23486a;border-radius:12px;font-weight:800;font-size:clamp(15px,2.5vw,22px)}
+.team-versus span:nth-child(2){color:#9db7d0}
+.form-chip{display:inline-block;min-width:21px;text-align:center;border-radius:5px;padding:3px;margin:2px;font-size:11px;font-weight:800;color:white}
+.form-win{background:#14a34a}.form-draw{background:#64748b}.form-loss{background:#bd3047}
+@media(max-width:700px){.analysis-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.panel{padding:6px;border-radius:9px}.panel h3{font-size:10px;padding:7px 5px;margin:-6px -6px 6px}.metric{font-size:10px;gap:3px}.metric b{font-size:11px}.panel small{font-size:9px}.bar-track{height:5px}.match{padding:8px}.team-versus{font-size:12px}.score-pill{font-size:14px;padding:3px 6px}}
+@media(max-width:430px){.analysis-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.panel:first-child{grid-column:1}.panel:nth-child(2){grid-column:2}.panel:nth-child(3){grid-column:span 2}.panel:nth-child(6){grid-column:span 2}}
 </style>
 </head>
 <body>
@@ -124,7 +141,7 @@ const selected=el('leagueFilter').value;
 const filtered=games.filter(m=>!selected||(m.competition?.name||'Bilinmeyen lig')===selected).sort((a,b)=>new Date(a.utcDate||0)-new Date(b.utcDate||0));
 el('matches').innerHTML=filtered.map(m=>`
 <div class="match">
-<b>🕒 ${esc(kickoffTR(m.utcDate))} — ${esc(m.homeTeam?.name)} – ${esc(m.awayTeam?.name)}</b>
+<div class="match-head"><b>🕒 ${esc(kickoffTR(m.utcDate))}</b><span class="muted">⚽ Maç Analizi</span></div><div class="team-versus"><span>${esc(m.homeTeam?.name)}</span><span>VS</span><span>${esc(m.awayTeam?.name)}</span></div>
 <p class="muted">🏆 <b>${esc(trLeague(m.competition?.name))}</b> · Türkiye saati</p>
 <button onclick="analyze('${esc(m.id)}')">Analiz et</button>
 <button onclick="send('${esc(m.id)}')">Telegram'a gönder</button>
@@ -192,11 +209,11 @@ else if(valid(a)&&valid(b)){lambda=.45*((a.scored+a.conceded)/a.count+(b.scored+
 const poissonOver=(l,k)=>l===null?null:100*(1-Math.exp(-l)*Array.from({length:k+1},(_,i)=>{let factorial=1;for(let j=2;j<=i;j++)factorial*=j;return Math.pow(l,i)/factorial;}).reduce((x,y)=>x+y,0));
 const fullLambda=valid(a)&&valid(b)?((a.scored+a.conceded)/a.count+(b.scored+b.conceded)/b.count)/2:null;
 const halfPanel='<div class="panel"><h3>⏱ İlk Yarı Gol Seçenekleri</h3>'+bar('İY 0,5 Üst',poissonOver(lambda,0))+bar('İY 1,5 Üst',poissonOver(lambda,1))+bar('İY 2,5 Üst',poissonOver(lambda,2))+'<small>'+esc(halfMethod||'Yeterli veri yok')+' · Model puanı</small></div>';
-const general='<div class="panel"><h3>⚽ Genel Öneriler</h3>'+bar('1,5 Üst',poissonOver(fullLambda,1))+bar('2,5 Üst',poissonOver(fullLambda,2))+'<small>90 dakika gol modeli</small></div>';
+const general='<div class="panel"><h3>🏆 Genel Öneriler</h3>'+bar('1,5 Üst',poissonOver(fullLambda,1))+bar('2,5 Üst',poissonOver(fullLambda,2))+bar('2,5 Alt',fullLambda===null?null:100-poissonOver(fullLambda,2))+'<small>90 dakika gol modeli</small></div>';
 const other='<div class="panel"><h3>📋 İlk Yarı Takım Puanları</h3>'+bar('Ev gol atma',pct(a,'home','first_half_scored'))+bar('Dep gol atma',pct(b,'away','first_half_scored'))+bar('Ev gol yeme',pct(a,'home','first_half_conceded'))+bar('Dep gol yeme',pct(b,'away','first_half_conceded'))+'<small>Eksik ilk yarı verisinde tahmini puan kullanılır</small></div>';
-const teamPanel='<div class="panel"><h3>📊 Son Maç Performansı</h3>'+[ [r.home,a],[r.away,b] ].map(([name,s])=>'<b>'+esc(name)+'</b>'+metric('Maç sayısı',s?.count??0)+metric('Attığı / yediği gol',valid(s)?s.scored+' / '+s.conceded:'Veri yok')+metric('İlk yarı golü',s?.first_half_count?s.first_half_scored+' / '+s.first_half_conceded:'Veri yok')+(s?.games?.length?'<details><summary>Maçları göster</summary>'+s.games.map(g=>'<p><small>'+esc(g.date)+' · '+esc(g.opponent)+' · '+g.scored+'-'+g.conceded+' · İY '+(g.first_half_scored??'?')+'-'+(g.first_half_conceded??'?')+'</small></p>').join('')+'</details>':'')).join('')+'</div>';
+const teamPanel='<div class="panel"><h3>📊 Son 5 Maç Performansı</h3>'+[ [r.home,a],[r.away,b] ].map(([name,s])=>'<b>'+esc(name)+'</b>'+metric('Maç sayısı',s?.count??0)+metric('Attığı / yediği gol',valid(s)?s.scored+' / '+s.conceded:'Veri yok')+metric('İlk yarı golü',s?.first_half_count?s.first_half_scored+' / '+s.first_half_conceded:'Veri yok')+(s?.games?.length?'<details><summary>Maçları göster</summary>'+s.games.map(g=>'<p><small>'+esc(g.date)+' · '+esc(g.opponent)+' · '+g.scored+'-'+g.conceded+' · İY '+(g.first_half_scored??'?')+'-'+(g.first_half_conceded??'?')+'</small></p>').join('')+'</details>':'')).join('')+'</div>';
 const h2hPanel='<div class="panel"><h3>🔄 Kendi Aralarındaki Maçlar</h3>'+(h?.count?'<small>Ev sahibinin bu rakibe karşı kendi sahasındaki '+h.count+' maç</small>'+metric(esc(r.home)+' galibiyet',h.home_wins)+metric('Beraberlik',h.draws)+metric(esc(r.away)+' galibiyet',h.away_wins):'<small>Doğrulanmış ikili maç yok</small>')+'</div>';
-const avgPanel='<div class="panel"><h3>🏠 Ev / Deplasman ve Gol</h3>'+[[r.home,a,'home'],[r.away,b,'away']].map(([name,s,venue])=>{const g=(s?.games||[]).filter(x=>x.venue===venue);return '<b>'+esc(name)+'</b>'+metric('Saha maç sayısı',g.length)+metric('Gol ortalaması',g.length?(g.reduce((n,x)=>n+x.scored,0)/g.length).toFixed(2):'Veri yok');}).join('')+'</div>';
+const avgPanel='<div class="panel"><h3>🏠 Ev / Deplasman Performansı</h3>'+[[r.home,a,'home'],[r.away,b,'away']].map(([name,s,venue])=>{const g=(s?.games||[]).filter(x=>x.venue===venue);return '<b>'+esc(name)+'</b>'+metric('Saha maç sayısı',g.length)+metric('Gol ortalaması',g.length?(g.reduce((n,x)=>n+x.scored,0)/g.length).toFixed(2):'Veri yok');}).join('')+'</div>';
 state.innerHTML='<div class="analysis-grid">'+general+halfPanel+other+teamPanel+h2hPanel+avgPanel+'</div><p class="muted"><small>Puanlar istatistiksel model tahminidir; garanti değildir. Gerçek ilk yarı verisi yoksa tahmini hesaplama belirtilir.</small></p>';
 
 }
