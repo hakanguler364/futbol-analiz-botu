@@ -51,8 +51,7 @@ def matches(date):
                 turkey_day = (datetime.datetime.fromisoformat(kickoff.replace("Z", "+00:00")) + datetime.timedelta(hours=3)).date().isoformat()
             except ValueError:
                 continue
-            if turkey_day != date:
-                continue
+            # ESPN date buckets can differ from Turkey-local dates; do not discard events here.
             teams = (event.get("competitions") or [{}])[0].get("competitors", [])
             home = next((t for t in teams if t.get("homeAway") == "home"), None)
             away = next((t for t in teams if t.get("homeAway") == "away"), None)
