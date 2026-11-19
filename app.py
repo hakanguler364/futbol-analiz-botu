@@ -65,7 +65,7 @@ def matches(date):
                 if not home or not away:
                     continue
                 uid = int.from_bytes(hashlib.sha256((league+str(event.get("id"))).encode()).digest()[:7], "big")
-                found.append({"id": -uid, "utcDate": kickoff, "competition": {"name": (data.get("leagues") or [{}])[0].get("name", league)}, "homeTeam": {"name": home.get("team", {}).get("displayName", "?"), "id": None}, "awayTeam": {"name": away.get("team", {}).get("displayName", "?"), "id": None}, "source": "ESPN", "espn_league": league, "espn_event_id": event.get("id"), "home_espn_id": home.get("team", {}).get("id"), "away_espn_id": away.get("team", {}).get("id")})
+                found.append({"id": -uid, "utcDate": kickoff, "competition": {"name": (data.get("leagues") or [{}])[0].get("name", league)}, "homeTeam": {"name": home.get("team", {}).get("displayName", "?"), "id": None, "crest": ((home.get("team", {}).get("logos") or [{}])[0].get("href"))}, "awayTeam": {"name": away.get("team", {}).get("displayName", "?"), "id": None, "crest": ((away.get("team", {}).get("logos") or [{}])[0].get("href"))}, "source": "ESPN", "espn_league": league, "espn_event_id": event.get("id"), "home_espn_id": home.get("team", {}).get("id"), "away_espn_id": away.get("team", {}).get("id")})
         return list({m["id"]: m for m in found}.values())
     items = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=24) as pool:
@@ -87,7 +87,7 @@ def matches(date):
                 continue
             kickoff = (event.get("strTimestamp") or ((event.get("dateEvent") or date) + "T" + (event.get("strTime") or "00:00:00") + "Z"))
             uid = int.from_bytes(hashlib.sha256(("sportsdb"+str(event.get("idEvent"))).encode()).digest()[:7], "big")
-            out.append({"id": -uid, "utcDate": kickoff, "competition": {"name": event.get("strLeague") or "Other"}, "homeTeam": {"name": home, "id": None}, "awayTeam": {"name": away, "id": None}, "source": "TheSportsDB", "sportsdb_event_id": event.get("idEvent")})
+            out.append({"id": -uid, "utcDate": kickoff, "competition": {"name": event.get("strLeague") or "Other"}, "homeTeam": {"name": home, "id": None, "crest": event.get("strHomeTeamBadge")}, "awayTeam": {"name": away, "id": None, "crest": event.get("strAwayTeamBadge")}, "source": "TheSportsDB", "sportsdb_event_id": event.get("idEvent")})
         return out
     try:
         extra_events = sportsdb()
