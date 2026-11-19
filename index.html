@@ -315,7 +315,6 @@ else if(halfAll.length>=3){lambda=halfAll.reduce((n,g)=>n+g.first_half_scored+g.
 
 const poissonOver=(l,k)=>l===null?null:100*(1-Math.exp(-l)*Array.from({length:k+1},(_,i)=>{let factorial=1;for(let j=2;j<=i;j++)factorial*=j;return Math.pow(l,i)/factorial;}).reduce((x,y)=>x+y,0));
 const fullLambda=valid(a)&&valid(b)?((a.scored+a.conceded)/a.count+(b.scored+b.conceded)/b.count)/2:null;
-const halfPanel='<div class="inner"><h3>⏱ İlk Yarı Gol Seçenekleri</h3>'+bar('İY 0,5 Üst',adjustedHalfScore)+bar('İY 1,5 Üst',poissonOver(lambda,1))+bar('İY 2,5 Üst',poissonOver(lambda,2))+'<small>'+esc(halfMethod||'Yeterli veri yok')+' · Model puanı</small></div>';
 const general='<div class="inner"><h3>🏆 Genel Öneriler</h3>'+bar('1,5 Üst',poissonOver(fullLambda,1))+bar('2,5 Üst',poissonOver(fullLambda,2))+bar('2,5 Alt',fullLambda===null?null:100-poissonOver(fullLambda,2))+'<small>90 dakika gol modeli</small></div>';
 const other='<div class="inner"><h3>📋 İlk Yarı Takım Puanları</h3>'+bar('Ev gol atma',pct(a,'home','first_half_scored'))+bar('Dep gol atma',pct(b,'away','first_half_scored'))+bar('Ev gol yeme',pct(a,'home','first_half_conceded'))+bar('Dep gol yeme',pct(b,'away','first_half_conceded'))+'<small>Yalnız doğrulanmış ilk yarı maçları kullanılır; yüzde puan değildir.</small></div>';
 const avg=(s,field)=>valid(s)?(s[field]/s.count):null;
@@ -345,6 +344,7 @@ const homeDefenseRisk=homeHalfAttack!==null&&awayHalfDefense!==null&&homeHalfAtt
 const awayDefenseRisk=awayHalfAttack!==null&&homeHalfDefense!==null&&awayHalfAttack>75&&homeHalfDefense<40;
 const defenseRiskCount=Number(homeDefenseRisk)+Number(awayDefenseRisk);
 const halfScore=poissonOver(lambda,0),adjustedHalfScore=halfScore===null?null:Math.max(0,halfScore-15*defenseRiskCount),generalScore=poissonOver(fullLambda,1);
+const halfPanel='<div class="inner"><h3>⏱ İlk Yarı Gol Seçenekleri</h3>'+bar('İY 0,5 Üst',adjustedHalfScore)+bar('İY 1,5 Üst',poissonOver(lambda,1))+bar('İY 2,5 Üst',poissonOver(lambda,2))+'<small>'+esc(halfMethod||'Yeterli veri yok')+' · Model puanı</small></div>';
 const riskReasons=[];
 if(homeDefenseRisk)riskReasons.push('⚠️ Dikkat: Rakip savunması güçlü — ev sahibinin ilk yarı gol atma oranı %'+homeHalfAttack+', deplasmanın gol yeme oranı %'+awayHalfDefense+'. İY 0,5 Üst puanı 15 düşürüldü.');
 if(awayDefenseRisk)riskReasons.push('⚠️ Dikkat: Rakip savunması güçlü — deplasmanın ilk yarı gol atma oranı %'+awayHalfAttack+', ev sahibinin gol yeme oranı %'+homeHalfDefense+'. İY 0,5 Üst puanı 15 düşürüldü.');
