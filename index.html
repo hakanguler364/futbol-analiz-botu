@@ -154,7 +154,7 @@ button{font-size:12px;padding:8px 10px;margin:3px}
 </main>
 
 <script>
-let games=[],done=0,ok=0,bad=0,results={},runId=0;
+let games=[],done=0,ok=0,bad=0,results={},runId=0,renderedAnalyses={};
 const el=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({
 '&':'&amp;','<':'&lt;','>':'&gt;',
@@ -213,7 +213,7 @@ el('matches').innerHTML=filtered.map(m=>`
 <p class="muted">🏆 <b>${esc(trLeague(m.competition?.name))}</b> · Türkiye saati</p>
 
 <button onclick="send('${esc(m.id)}')">Telegram'a gönder</button>
-<div id="state-${esc(m.id)}" class="muted">${results[m.id]?.error ? "Analiz alınamadı: "+esc(results[m.id].error) : results[m.id] ? "Analiz hazır" : "⏳ Otomatik analiz hazırlanıyor..."}</div>
+<div id="state-${esc(m.id)}" class="muted">${renderedAnalyses[m.id] || (results[m.id]?.error ? "Analiz alınamadı: "+esc(results[m.id].error) : "⏳ Otomatik analiz hazırlanıyor...")}</div>
 </div>
 `).join('')||'<p>Bu tarihlerde veri kaynağının kapsadığı maç bulunamadı.</p>';
 update();
@@ -223,7 +223,7 @@ const date=el('matchDate').value;
 if(!date){alert('Önce tarih seçin');return;}
 el('mode').textContent='Maçlar yükleniyor...';
 el('matches').textContent='';
-runId++;games=[];done=ok=bad=0;results={};
+runId++;games=[];done=ok=bad=0;results={};renderedAnalyses={};
 update();
 
 try{
@@ -302,6 +302,7 @@ const recommended=[['1,5 Üst',generalScore],['2,5 Alt',fullLambda===null?null:1
 const safest=recommended.find(x=>!riskFlag||x[0]!=='İY 0,5 Üst')||recommended[0];
 const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3>'+(safest?'<div class="metric"><span>✅ Daha Güvenli Seçenek</span><b class="score-green">'+safest[0]+' ('+Math.round(safest[1])+' puan)</b></div>':'<p>Öneri için yeterli veri yok</p>')+(halfScore!==null?'<div class="metric"><span>⚠️ Alternatif '+(riskFlag?'(Riskli)':'')+'</span><b class="score-yellow">İY 0,5 Üst ('+Math.round(halfScore)+' puan)</b></div>':'')+'<small>Model puanları kesinlik veya garanti değildir.</small></div>';
 state.innerHTML='<div class="analysis-grid">'+teamPanel+goalsPanel+avgPanel+h2hPanel+comparePanel+riskPanel+'<div class="panel third">'+general+'</div><div class="panel third">'+halfPanel+'</div><div class="panel third">'+other+'</div>'+systemPanel+'</div>';
+renderedAnalyses[id]=state.innerHTML;
 
 
 }
@@ -312,7 +313,7 @@ el('details').textContent=h2h+'\n\n'+fmt(r.home,r.sections?.home_last5)+'\n\n'+f
 }catch(e){
 if(!results[id]){done++;bad++;}
 results[id]={error:e.message};
-el('state-'+id).textContent=' ✕ '+e.message;
+const failedNode=el('state-'+id);if(failedNode)failedNode.textContent=' ✕ '+e.message;
 el('details').textContent=e.message;
 }
 update();
