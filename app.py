@@ -357,11 +357,27 @@ def espn_head_to_head(match):
     url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/" +
            urllib.parse.quote(str(league), safe="") + "/teams/" +
            urllib.parse.quote(str(home_id), safe="") + "/schedule?limit=300")
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=12) as response:
-        data = json.load(response)
+    # ESPN's default schedule often covers only one season. Query earlier
+    # seasons to recover verified head-to-head matches at both venues.
+    events = []
+    seen_event_ids = set()
+    for year in range(kickoff.year, kickoff.year - 11, -1):
+        season_url = url + "&season=" + str(year)
+        try:
+            req = urllib.request.Request(season_url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=7) as response:
+                data = json.load(response)
+            for event in data.get("events") or []:
+                event_id = event.get("id")
+                if event_id and event_id in seen_event_ids:
+                    continue
+                if event_id:
+                    seen_event_ids.add(event_id)
+                events.append(event)
+        except (OSError, ValueError, TypeError):
+            continue
     games = []
-    for event in data.get("events", []):
+    for event in events:
         try:
             when = datetime.datetime.fromisoformat(event.get("date", "").replace("Z", "+00:00"))
             if when >= kickoff:
