@@ -315,7 +315,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         datetime.timezone.utc).date().isoformat()]
                 )[0]
                 items, demo = matches(date)
-                self.send({"matches": items, "demo": demo, "date": date,
+                self.send({"matches": [dict(m, id=str(m["id"])) for m in items], "demo": demo, "date": date,
                            "count": len(items),
                            "message": ("Bu tarih icin API mac dondurmedi. "
                                        "Ucretsiz plan kapsaminda mac olmayabilir.")
