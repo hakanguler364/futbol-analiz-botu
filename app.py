@@ -365,6 +365,44 @@ def espn_head_to_head(match):
             "away_wins": sum(g["winner"] == "away" for g in games),
             "draws": sum(g["winner"] == "draw" for g in games), "games": games}
 
+def sportsdb_head_to_head(match):
+    """Find verified past meetings with today's home team hosting."""
+    home_name = match.get("homeTeam", {}).get("name", "")
+    away_name = match.get("awayTeam", {}).get("name", "")
+    if not home_name or not away_name:
+        return None
+    def lookup(name):
+        url = "https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=" + urllib.parse.quote(name)
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=9) as response:
+            teams = json.load(response).get("teams") or []
+        norm = lambda x: re.sub(r"[^a-z0-9]", "", (x or "").lower())
+        exact = next((t for t in teams if norm(t.get("strTeam")) == norm(name)), None)
+        return exact.get("idTeam") if exact else None
+    home_id, away_id = lookup(home_name), lookup(away_name)
+    if not home_id or not away_id:
+        return None
+    url = "https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=" + urllib.parse.quote(str(home_id))
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=9) as response:
+        events = json.load(response).get("results") or []
+    games = []
+    for event in events:
+        if str(event.get("idHomeTeam")) != str(home_id) or str(event.get("idAwayTeam")) != str(away_id):
+            continue
+        try:
+            hg, ag = int(event["intHomeScore"]), int(event["intAwayScore"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        games.append({"date": event.get("dateEvent") or "", "home_goals": hg,
+                      "away_goals": ag, "winner": "home" if hg > ag else "away" if ag > hg else "draw"})
+    games.sort(key=lambda g: g["date"], reverse=True)
+    games = games[:5]
+    return {"count": len(games), "home_wins": sum(g["winner"] == "home" for g in games),
+            "away_wins": sum(g["winner"] == "away" for g in games),
+            "draws": sum(g["winner"] == "draw" for g in games), "games": games,
+            "source": "TheSportsDB (son kayıtlar)"}
+
 def analyze(match):
     home, away = match["homeTeam"], match["awayTeam"]
     output = {
@@ -395,7 +433,7 @@ def analyze(match):
             output["sections"][key] = None
             output["errors"].append(f"{key}: {exc}")
     try:
-        output["sections"]["head_to_head_last10"] = espn_head_to_head(match)
+        output["sections"]["head_to_head_last10"] = espn_head_to_head(match) if match.get("source") == "ESPN" else sportsdb_head_to_head(match)
     except Exception as exc:
         output["sections"]["head_to_head_last10"] = None
         output["errors"].append(f"head_to_head_last10: {exc}")
