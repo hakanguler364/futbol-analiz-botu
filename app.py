@@ -40,28 +40,35 @@ def matches(date):
     import concurrent.futures, hashlib
     leagues = ["eng.1","eng.2","eng.3","eng.4","eng.fa","eng.league_cup","esp.1","esp.2","esp.copa_del_rey","ger.1","ger.2","ger.dfb_pokal","ita.1","ita.2","ita.coppa_italia","fra.1","fra.2","fra.coupe_de_france","tur.1","tur.2","tur.cup","ned.1","ned.2","ned.cup","por.1","por.2","por.taca.portugal","bel.1","bel.2","sco.1","sco.2","sco.3","sco.4","sco.fa","irl.1","nir.1","wal.1","aut.1","sui.1","den.1","nor.1","swe.1","fin.1","pol.1","cze.1","gre.1","rou.1","rus.1","ukr.1","cro.1","srb.1","hun.1","usa.1","usa.open","mex.1","mex.2","bra.1","bra.2","bra.copa","arg.1","arg.2","col.1","chi.1","uru.1","par.1","per.1","ecu.1","ven.1","bol.1","crc.1","hon.1","gua.1","slv.1","ksa.1","uae.1","qat.1","ind.1","jpn.1","jpn.2","kor.1","chn.1","aus.1","aus.2","idn.1","tha.1","mys.1","sgp.1","uefa.champions","uefa.europa","uefa.europa.conf","uefa.nations","uefa.euro","uefa.euro.qualifying","fifa.world","fifa.worldq.uefa","fifa.worldq.conmebol","fifa.worldq.concacaf","fifa.worldq.afc","fifa.worldq.caf","fifa.friendly","concacaf.champions","conmebol.libertadores","conmebol.sudamericana","afc.champions","caf.champions","fifa.club.world_cup"]
     def get_league(league):
-        url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + date.replace("-", "") + "&limit=500"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=12) as response:
-            data = json.load(response)
+        # Turkey (UTC+3) calendar day overlaps two UTC calendar dates.
+        utc_days = [(datetime.date.fromisoformat(date) - datetime.timedelta(days=1)).strftime("%Y%m%d"), date.replace("-", "")]
         found = []
-        for event in data.get("events", []):
-            kickoff = event.get("date", "")
+        for utc_day in utc_days:
+            url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + utc_day + "&limit=500"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
             try:
-                turkey_day = (datetime.datetime.fromisoformat(kickoff.replace("Z", "+00:00")) + datetime.timedelta(hours=3)).date().isoformat()
-            except ValueError:
+                with urllib.request.urlopen(req, timeout=8) as response:
+                    data = json.load(response)
+            except Exception:
                 continue
-            # ESPN date buckets can differ from Turkey-local dates; do not discard events here.
-            teams = (event.get("competitions") or [{}])[0].get("competitors", [])
-            home = next((t for t in teams if t.get("homeAway") == "home"), None)
-            away = next((t for t in teams if t.get("homeAway") == "away"), None)
-            if not home or not away:
-                continue
-            uid = int.from_bytes(hashlib.sha256((league+str(event.get("id"))).encode()).digest()[:7], "big")
-            found.append({"id": -uid, "utcDate": event.get("date", date+"T00:00:00Z"), "competition": {"name": (data.get("leagues") or [{}])[0].get("name", league)}, "homeTeam": {"name": home.get("team", {}).get("displayName", "?"), "id": None}, "awayTeam": {"name": away.get("team", {}).get("displayName", "?"), "id": None}, "source": "ESPN", "espn_league": league, "espn_event_id": event.get("id"), "home_espn_id": home.get("team", {}).get("id"), "away_espn_id": away.get("team", {}).get("id")})
-        return found
+            for event in data.get("events", []):
+                kickoff = event.get("date", "")
+                try:
+                    turkey_day = (datetime.datetime.fromisoformat(kickoff.replace("Z", "+00:00")) + datetime.timedelta(hours=3)).date().isoformat()
+                except ValueError:
+                    continue
+                if turkey_day != date:
+                    continue
+                teams = (event.get("competitions") or [{}])[0].get("competitors", [])
+                home = next((t for t in teams if t.get("homeAway") == "home"), None)
+                away = next((t for t in teams if t.get("homeAway") == "away"), None)
+                if not home or not away:
+                    continue
+                uid = int.from_bytes(hashlib.sha256((league+str(event.get("id"))).encode()).digest()[:7], "big")
+                found.append({"id": -uid, "utcDate": kickoff, "competition": {"name": (data.get("leagues") or [{}])[0].get("name", league)}, "homeTeam": {"name": home.get("team", {}).get("displayName", "?"), "id": None}, "awayTeam": {"name": away.get("team", {}).get("displayName", "?"), "id": None}, "source": "ESPN", "espn_league": league, "espn_event_id": event.get("id"), "home_espn_id": home.get("team", {}).get("id"), "away_espn_id": away.get("team", {}).get("id")})
+        return list({m["id"]: m for m in found}.values())
     items = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=24) as pool:
         for future in concurrent.futures.as_completed([pool.submit(get_league, league) for league in leagues]):
             try:
                 items.extend(future.result())
