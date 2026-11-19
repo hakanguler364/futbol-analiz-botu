@@ -259,13 +259,15 @@ def espn_head_to_head(match):
                 if isinstance(value, dict):
                     value = value.get("value", value.get("displayValue"))
                 return int(float(value))
+            if home.get("homeAway") != "home" or away.get("homeAway") != "away":
+                continue
             hg, ag = score(home), score(away)
             games.append({"date": when.date().isoformat(), "home_goals": hg,
                           "away_goals": ag, "winner": "home" if hg > ag else "away" if ag > hg else "draw"})
         except (ValueError, TypeError, KeyError, StopIteration, IndexError):
             continue
     games.sort(key=lambda g: g["date"], reverse=True)
-    games = games[:10]
+    games = games[:5]
     return {"count": len(games), "home_wins": sum(g["winner"] == "home" for g in games),
             "away_wins": sum(g["winner"] == "away" for g in games),
             "draws": sum(g["winner"] == "draw" for g in games), "games": games}
