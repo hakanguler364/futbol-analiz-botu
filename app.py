@@ -238,12 +238,24 @@ def sportsdb_recent(match, side):
     if not team_id:
         return None
     events = []
-    for endpoint in ("eventslast.php?id=", "eventsseason.php?id="):
-        try:
-            payload = get_json("https://www.thesportsdb.com/api/v1/json/3/" + endpoint + urllib.parse.quote(team_id))
-            events.extend(payload.get("results") or payload.get("events") or [])
-        except (OSError, ValueError, TypeError):
-            continue
+    # eventslast uses a team ID; eventsseason requires a league ID and season.
+    try:
+        payload = get_json("https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id=" + urllib.parse.quote(team_id))
+        events.extend(payload.get("results") or payload.get("events") or [])
+    except (OSError, ValueError, TypeError):
+        pass
+    league_id = exact[0].get("idLeague")
+    if league_id:
+        kickoff_year = int(match.get("utcDate", "2026")[:4])
+        seasons = (str(kickoff_year), str(kickoff_year - 1),
+                   f"{kickoff_year}-{kickoff_year + 1}", f"{kickoff_year - 1}-{kickoff_year}")
+        for season in seasons:
+            try:
+                params = urllib.parse.urlencode({"id": str(league_id), "s": season})
+                payload = get_json("https://www.thesportsdb.com/api/v1/json/3/eventsseason.php?" + params)
+                events.extend(payload.get("events") or payload.get("results") or [])
+            except (OSError, ValueError, TypeError):
+                continue
     cutoff = match.get("utcDate", "")[:10]
     rows = []
     for event in events:
