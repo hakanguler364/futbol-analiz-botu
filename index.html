@@ -107,6 +107,16 @@ button{font-size:12px;padding:8px 10px;margin:3px}
 .team-versus span:last-child{color:#ffc75b!important;text-align:right}
 .team-versus span:nth-child(2){font-size:15px!important;color:#a4b4c9!important}
 @media(max-width:700px){.team-versus{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)!important;gap:7px!important;padding:13px 8px!important}.team-versus span:first-child,.team-versus span:last-child{font-size:24px!important;line-height:1.15!important}.team-versus span:nth-child(2){font-size:12px!important}}
+
+/* Maç üst başlığı: isimler gerçekten büyük, arma varsa göster */
+.team-versus{display:grid!important;grid-template-columns:minmax(0,1fr) 30px minmax(0,1fr)!important;gap:6px!important;align-items:center!important;padding:14px 8px!important}
+.team-versus .match-team{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;text-align:center}
+.team-versus .match-team strong{display:block;font-size:clamp(24px,4.8vw,36px)!important;font-weight:900!important;line-height:1.13!important;overflow-wrap:anywhere;word-break:normal}
+.team-versus .match-team-home strong{color:#55c7ff!important}
+.team-versus .match-team-away strong{color:#ffc75b!important}
+.team-versus .team-badge{width:56px;height:56px;object-fit:contain}
+.team-versus .versus-label{font-size:13px!important;justify-self:center;color:#a4b4c9!important}
+@media(max-width:700px){.team-versus .match-team strong{font-size:27px!important}.team-versus .team-badge{width:48px;height:48px}}
 </style>
 </head>
 <body>
@@ -189,12 +199,13 @@ el('failed').textContent=bad;
 el('progress').textContent=`${done}/${games.length} maç işlendi`;
 }
 
+function badge(team){const u=team?.crest||team?.logo||'';return /^https:\/\//i.test(u)?'<img class="team-badge" src="'+esc(u)+'" alt="'+esc(team?.name||'Takım')+' arması" loading="lazy" onerror="this.style.display=\'none\'">':'';}
 function renderGames(){
 const selected=el('leagueFilter').value;
 const filtered=games.filter(m=>!selected||(m.competition?.name||'Bilinmeyen lig')===selected).sort((a,b)=>new Date(a.utcDate||0)-new Date(b.utcDate||0));
 el('matches').innerHTML=filtered.map(m=>`
 <div class="match">
-<div class="match-head"><b>🕒 ${esc(kickoffTR(m.utcDate))}</b><span class="muted">⚽ Maç Analizi</span></div><div class="team-versus"><span>${esc(m.homeTeam?.name)}</span><span>VS</span><span>${esc(m.awayTeam?.name)}</span></div>
+<div class="match-head"><b>🕒 ${esc(kickoffTR(m.utcDate))}</b><span class="muted">⚽ Maç Analizi</span></div><div class="team-versus"><div class="match-team match-team-home">${badge(m.homeTeam)}<strong>${esc(m.homeTeam?.name)}</strong></div><span class="versus-label">VS</span><div class="match-team match-team-away">${badge(m.awayTeam)}<strong>${esc(m.awayTeam?.name)}</strong></div></div>
 <p class="muted">🏆 <b>${esc(trLeague(m.competition?.name))}</b> · Türkiye saati</p>
 
 <button onclick="send('${esc(m.id)}')">Telegram'a gönder</button>
