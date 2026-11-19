@@ -368,7 +368,7 @@ def espn_head_to_head(match):
             "draws": sum(g["winner"] == "draw" for g in games), "games": games}
 
 def sportsdb_head_to_head(match):
-    """Find verified past meetings with today's home team hosting."""
+    """Find completed head-to-head matches before kickoff, at either venue."""
     home_name = match.get("homeTeam", {}).get("name", "")
     away_name = match.get("awayTeam", {}).get("name", "")
     if not home_name or not away_name:
@@ -404,21 +404,30 @@ def sportsdb_head_to_head(match):
     kickoff_day = str(match.get("utcDate") or "")[:10]
     games = []
     for event in events:
-        if str(event.get("idHomeTeam")) != str(home_id) or str(event.get("idAwayTeam")) != str(away_id):
+        if {str(event.get("idHomeTeam")), str(event.get("idAwayTeam"))} != {str(home_id), str(away_id)}:
+            continue
+        event_day = str(event.get("dateEvent") or "")[:10]
+        if not event_day or (kickoff_day and event_day >= kickoff_day):
             continue
         try:
             hg, ag = int(event["intHomeScore"]), int(event["intAwayScore"])
         except (TypeError, ValueError, KeyError):
             continue
-        games.append({"date": event.get("dateEvent") or "", "home_goals": hg,
+        if str(event.get("idHomeTeam")) != str(home_id):
+            hg, ag = ag, hg
+        games.append({"date": event_day, "home_goals": hg,
                       "away_goals": ag, "winner": "home" if hg > ag else "away" if ag > hg else "draw"})
     games = list({(g["date"], g["home_goals"], g["away_goals"]): g for g in games}.values())
     games.sort(key=lambda g: g["date"], reverse=True)
-    games = games[:5]
+    games = games[:10]
     return {"count": len(games), "home_wins": sum(g["winner"] == "home" for g in games),
             "away_wins": sum(g["winner"] == "away" for g in games),
             "draws": sum(g["winner"] == "draw" for g in games), "games": games,
-            "source": "TheSportsDB (son kayıtlar)"}
+            "kg_var": sum(g["home_goals"] > 0 and g["away_goals"] > 0 for g in games),
+            "kg_yok": sum(g["home_goals"] == 0 or g["away_goals"] == 0 for g in games),
+            "over25": sum(g["home_goals"] + g["away_goals"] > 2 for g in games),
+            "under25": sum(g["home_goals"] + g["away_goals"] <= 2 for g in games),
+            "source": "TheSportsDB (dogrulanmis gecmis maclar)"}
 
 def analyze(match):
     home, away = match["homeTeam"], match["awayTeam"]
