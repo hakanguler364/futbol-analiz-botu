@@ -54,6 +54,26 @@ button{font-size:12px;padding:8px 10px;margin:3px}
 .form-win{background:#14a34a}.form-draw{background:#64748b}.form-loss{background:#bd3047}
 @media(max-width:700px){.analysis-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.panel{padding:6px;border-radius:9px}.panel h3{font-size:10px;padding:7px 5px;margin:-6px -6px 6px}.metric{font-size:10px;gap:3px}.metric b{font-size:11px}.panel small{font-size:9px}.bar-track{height:5px}.match{padding:8px}.team-versus{font-size:12px}.score-pill{font-size:14px;padding:3px 6px}}
 @media(max-width:430px){.analysis-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.panel:first-child{grid-column:1}.panel:nth-child(2){grid-column:2}.panel:nth-child(3){grid-column:span 2}.panel:nth-child(6){grid-column:span 2}}
+
+/* Referans ekran: kompakt, sabit sıralı maç analizi */
+.analysis-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.analysis-grid>.panel{grid-column:span 3}
+.analysis-grid>.panel.third{grid-column:span 2}
+.analysis-grid>.panel.full{grid-column:span 6}
+.analysis-grid .panel{min-width:0}
+.analysis-grid .panel h3{font-size:clamp(11px,2.5vw,15px)}
+.analysis-grid .risk-panel{border-color:#d85b73;background:linear-gradient(135deg,#44182b,#1d1024)}
+.analysis-grid .risk-panel h3{background:#582035;color:#ff929b;font-size:17px}
+.analysis-grid .system-panel{border-color:#19b67b;background:linear-gradient(130deg,#083c33,#091b31)}
+.analysis-grid .system-panel h3{color:#75f5a6}
+.analysis-grid .risk-line{padding:6px 0;font-size:12px}
+.analysis-grid .risk-line b{color:#ffd966}
+.analysis-grid .recommend{border:1px solid #d8b43b;border-radius:8px;padding:9px;margin-top:8px;color:#ffe99b}
+.analysis-grid .compact-table{width:100%;border-collapse:collapse;font-size:11px}
+.analysis-grid .compact-table td,.analysis-grid .compact-table th{padding:4px 2px;border-bottom:1px solid #28506c;text-align:left}
+.analysis-grid .form-chip{min-width:16px;padding:3px;margin:1px}
+.analysis-grid .small-note{font-size:11px;color:#9cb4cb}
+@media(max-width:700px){.analysis-grid{gap:6px}.analysis-grid>.panel{grid-column:span 3}.analysis-grid>.panel.third{grid-column:span 2}.analysis-grid>.panel.full{grid-column:span 6}.analysis-grid .metric{font-size:10px}.analysis-grid .metric b{font-size:11px}.analysis-grid .panel h3{font-size:10px}.analysis-grid .risk-line{font-size:11px}}
 </style>
 </head>
 <body>
@@ -208,13 +228,33 @@ else if(halfAll.length>=3){lambda=halfAll.reduce((n,g)=>n+g.first_half_scored+g.
 else if(valid(a)&&valid(b)){lambda=.45*((a.scored+a.conceded)/a.count+(b.scored+b.conceded)/b.count)/2;halfMethod='Tahmini (90 dk ortalaması)';}
 const poissonOver=(l,k)=>l===null?null:100*(1-Math.exp(-l)*Array.from({length:k+1},(_,i)=>{let factorial=1;for(let j=2;j<=i;j++)factorial*=j;return Math.pow(l,i)/factorial;}).reduce((x,y)=>x+y,0));
 const fullLambda=valid(a)&&valid(b)?((a.scored+a.conceded)/a.count+(b.scored+b.conceded)/b.count)/2:null;
-const halfPanel='<div class="panel"><h3>⏱ İlk Yarı Gol Seçenekleri</h3>'+bar('İY 0,5 Üst',poissonOver(lambda,0))+bar('İY 1,5 Üst',poissonOver(lambda,1))+bar('İY 2,5 Üst',poissonOver(lambda,2))+'<small>'+esc(halfMethod||'Yeterli veri yok')+' · Model puanı</small></div>';
-const general='<div class="panel"><h3>🏆 Genel Öneriler</h3>'+bar('1,5 Üst',poissonOver(fullLambda,1))+bar('2,5 Üst',poissonOver(fullLambda,2))+bar('2,5 Alt',fullLambda===null?null:100-poissonOver(fullLambda,2))+'<small>90 dakika gol modeli</small></div>';
-const other='<div class="panel"><h3>📋 İlk Yarı Takım Puanları</h3>'+bar('Ev gol atma',pct(a,'home','first_half_scored'))+bar('Dep gol atma',pct(b,'away','first_half_scored'))+bar('Ev gol yeme',pct(a,'home','first_half_conceded'))+bar('Dep gol yeme',pct(b,'away','first_half_conceded'))+'<small>Eksik ilk yarı verisinde tahmini puan kullanılır</small></div>';
-const teamPanel='<div class="panel"><h3>📊 Son 5 Maç Performansı</h3>'+[ [r.home,a],[r.away,b] ].map(([name,s])=>'<b>'+esc(name)+'</b>'+metric('Maç sayısı',s?.count??0)+metric('Attığı / yediği gol',valid(s)?s.scored+' / '+s.conceded:'Veri yok')+metric('İlk yarı golü',s?.first_half_count?s.first_half_scored+' / '+s.first_half_conceded:'Veri yok')+(s?.games?.length?'<details><summary>Maçları göster</summary>'+s.games.map(g=>'<p><small>'+esc(g.date)+' · '+esc(g.opponent)+' · '+g.scored+'-'+g.conceded+' · İY '+(g.first_half_scored??'?')+'-'+(g.first_half_conceded??'?')+'</small></p>').join('')+'</details>':'')).join('')+'</div>';
-const h2hPanel='<div class="panel"><h3>🔄 Kendi Aralarındaki Maçlar</h3>'+(h?.count?'<small>Ev sahibinin bu rakibe karşı kendi sahasındaki son '+h.count+' doğrulanmış maç</small>'+metric(esc(r.home)+' galibiyet',h.home_wins)+metric('Beraberlik',h.draws)+metric(esc(r.away)+' galibiyet',h.away_wins):'<small>Bu eşleşme için doğrulanmış iç saha karşılaşması bulunamadı (veri kaynağı sınırlı olabilir)</small>')+'</div>';
-const avgPanel='<div class="panel"><h3>🏠 Ev / Deplasman Performansı</h3>'+[[r.home,a,'home'],[r.away,b,'away']].map(([name,s,venue])=>{const g=(s?.games||[]).filter(x=>x.venue===venue);return '<b>'+esc(name)+'</b>'+metric('Saha maç sayısı',g.length)+metric('Gol ortalaması',g.length?(g.reduce((n,x)=>n+x.scored,0)/g.length).toFixed(2):'Veri yok');}).join('')+'</div>';
-state.innerHTML='<div class="analysis-grid">'+general+halfPanel+other+teamPanel+h2hPanel+avgPanel+'</div><p class="muted"><small>Puanlar istatistiksel model tahminidir; garanti değildir. Gerçek ilk yarı verisi yoksa tahmini hesaplama belirtilir.</small></p>';
+const halfPanel='<div class="inner"><h3>⏱ İlk Yarı Gol Seçenekleri</h3>'+bar('İY 0,5 Üst',poissonOver(lambda,0))+bar('İY 1,5 Üst',poissonOver(lambda,1))+bar('İY 2,5 Üst',poissonOver(lambda,2))+'<small>'+esc(halfMethod||'Yeterli veri yok')+' · Model puanı</small></div>';
+const general='<div class="inner"><h3>🏆 Genel Öneriler</h3>'+bar('1,5 Üst',poissonOver(fullLambda,1))+bar('2,5 Üst',poissonOver(fullLambda,2))+bar('2,5 Alt',fullLambda===null?null:100-poissonOver(fullLambda,2))+'<small>90 dakika gol modeli</small></div>';
+const other='<div class="inner"><h3>📋 İlk Yarı Takım Puanları</h3>'+bar('Ev gol atma',pct(a,'home','first_half_scored'))+bar('Dep gol atma',pct(b,'away','first_half_scored'))+bar('Ev gol yeme',pct(a,'home','first_half_conceded'))+bar('Dep gol yeme',pct(b,'away','first_half_conceded'))+'<small>Eksik ilk yarı verisinde tahmini puan kullanılır</small></div>';
+const avg=(s,field)=>valid(s)?(s[field]/s.count):null;
+const fmtAvg=v=>v===null?'Veri yok':v.toFixed(2).replace('.',',');
+const formRow=(name,s)=>{const g=(s?.games||[]).slice(0,5);return '<div class="metric"><b>'+esc(name)+'</b><span>'+ (g.length?g.map(x=>{const won=x.scored>x.conceded,draw=x.scored===x.conceded;return '<span class="form-chip '+(won?'form-win':draw?'form-draw':'form-loss')+'">'+(won?'G':draw?'B':'M')+'</span>';}).join(''):'<small>Son 5 sonuç yok</small>')+'</span></div>';};
+const teamPanel='<div class="panel"><h3>📊 Son 5 Maç Performansı</h3>'+formRow(r.home,a)+formRow(r.away,b)+'<small>Yalnızca doğrulanmış maç sonuçları</small></div>';
+const goalsPanel='<div class="panel"><h3>⚽ Gol İstatistikleri (Genel)</h3><table class="compact-table"><tr><th>Takım</th><th>Attı</th><th>Yedi</th><th>Ort. Attı</th><th>Ort. Yedi</th></tr>'+[[r.home,a],[r.away,b]].map(([n,x])=>'<tr><td>'+esc(n)+'</td><td>'+(valid(x)?x.scored:'—')+'</td><td>'+(valid(x)?x.conceded:'—')+'</td><td>'+fmtAvg(avg(x,'scored'))+'</td><td>'+fmtAvg(avg(x,'conceded'))+'</td></tr>').join('')+'</table><small>Veri kapsamı: '+(a?.count??0)+' / '+(b?.count??0)+' maç</small></div>';
+const venueSummary=(s,venue)=>{const g=(s?.games||[]).filter(x=>x.venue===venue).slice(0,5);return g.length?g.filter(x=>x.scored>x.conceded).length+'G '+g.filter(x=>x.scored===x.conceded).length+'B '+g.filter(x=>x.scored<x.conceded).length+'M':'Veri yok';};
+const avgPanel='<div class="panel"><h3>🏠 Kendi Sahası / Deplasman (Son 5)</h3>'+metric(esc(r.home)+' (Ev)',venueSummary(a,'home'))+metric(esc(r.away)+' (Dep)',venueSummary(b,'away'))+'</div>';
+const h2hPanel='<div class="panel"><h3>🤝 Kendi Aralarındaki Maçlar (Son 5)</h3>'+(h?.count?'<div class="metric"><span>'+esc(r.home)+': <b>'+h.home_wins+'</b></span><span>Beraberlik: <b>'+h.draws+'</b></span><span>'+esc(r.away)+': <b>'+h.away_wins+'</b></span></div><small>Yalnızca ev sahibinin kendi sahasındaki '+h.count+' doğrulanmış maç</small>':'<small>Doğrulanmış iç saha eşleşmesi bulunamadı; sonuç uydurulmadı.</small>')+'</div>';
+const homeAttack=avg(a,'scored'),awayConcede=avg(b,'conceded'),awayAttack=avg(b,'scored'),homeConcede=avg(a,'conceded');
+const comparePanel='<div class="panel"><h3>📊 Karşılaştırmalı Analiz (İlk Yarı İçin)</h3>'+[['Ev gol atma (Ort.)',homeAttack],['Dep gol yeme (Ort.)',awayConcede],['Dep gol atma (Ort.)',awayAttack],['Ev gol yeme (Ort.)',homeConcede]].map(([n,v])=>'<div class="metric"><span>'+n+'</span><b>'+fmtAvg(v)+'</b></div><div class="bar-track"><div class="bar-fill" style="width:'+(v===null?0:Math.min(100,v/2*100))+'%;background:'+(v===null?'#68798e':v<0.85?'#ff7c99':v>=1.25?'#43e982':'#ffe05a')+'"></div></div>').join('')+'<small>Genel maç ortalaması; ilk yarı ortalaması değildir.</small></div>';
+const halfScore=poissonOver(lambda,0),generalScore=poissonOver(fullLambda,1);
+const riskReasons=[];
+if(homeAttack!==null&&homeAttack<1)riskReasons.push('❌ Ev sahibinin gol atma ortalaması düşük ('+fmtAvg(homeAttack)+'/maç)');
+if(awayConcede!==null&&awayConcede>=1.25)riskReasons.push('✅ Deplasmanın gol yeme ortalaması yüksek ('+fmtAvg(awayConcede)+'/maç)');
+if(awayConcede!==null&&awayConcede<1)riskReasons.push('⚠️ Deplasmanın gol yeme ortalaması düşük ('+fmtAvg(awayConcede)+'/maç)');
+if(halfMethod!=='Gerçek ilk yarı verisi')riskReasons.push('⚠️ İlk yarı verisi sınırlı; tahmini model kullanıldı');
+if(!riskReasons.length)riskReasons.push('ℹ️ Belirgin risk işareti yok; model tahminidir');
+const riskFlag=(homeAttack!==null&&homeAttack<1)||(awayConcede!==null&&awayConcede<1)||halfMethod!=='Gerçek ilk yarı verisi';
+const riskPanel='<div class="panel risk-panel"><h3>⚠️ RİSK UYARISI</h3>'+riskReasons.map(x=>'<div class="risk-line">'+x+'</div>').join('')+'<div class="recommend"><b>Sonuç:</b> '+(riskFlag?'İlk yarı 0,5 Üst için temkinli değerlendirme gerekiyor.':'Belirgin ek risk uyarısı yok.')+'</div></div>';
+const recommended=[['1,5 Üst',generalScore],['2,5 Alt',fullLambda===null?null:100-poissonOver(fullLambda,2)],['İY 0,5 Üst',halfScore],['İY 1,5 Üst',poissonOver(lambda,1)]].filter(x=>x[1]!==null).sort((x,y)=>y[1]-x[1]);
+const safest=recommended.find(x=>!riskFlag||x[0]!=='İY 0,5 Üst')||recommended[0];
+const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3>'+(safest?'<div class="metric"><span>✅ Daha Güvenli Seçenek</span><b class="score-green">'+safest[0]+' ('+Math.round(safest[1])+' puan)</b></div>':'<p>Öneri için yeterli veri yok</p>')+(halfScore!==null?'<div class="metric"><span>⚠️ Alternatif '+(riskFlag?'(Riskli)':'')+'</span><b class="score-yellow">İY 0,5 Üst ('+Math.round(halfScore)+' puan)</b></div>':'')+'<small>Model puanları kesinlik veya garanti değildir.</small></div>';
+state.innerHTML='<div class="analysis-grid">'+teamPanel+goalsPanel+avgPanel+h2hPanel+comparePanel+riskPanel+'<div class="panel third">'+general+'</div><div class="panel third">'+halfPanel+'</div><div class="panel third">'+other+'</div>'+systemPanel+'</div>';
+
 
 }
 const fmt=(label,s)=>!s?label+': Veri alınamadı':label+' — Son '+s.count+' maç\nToplam '+s.scored+' gol attı, '+s.conceded+' gol yedi\nİlk yarı '+s.first_half_scored+' attı, '+s.first_half_conceded+' yedi ('+s.first_half_count+' maç)\n'+s.games.map(g=>g.date+' | '+(g.venue==='home'?'Ev':'Deplasman')+' | '+g.opponent+' | '+g.scored+' attı, '+g.conceded+' yedi | İlk yarı '+(g.first_half_scored??'?')+'-'+(g.first_half_conceded??'?')).join('\n');
