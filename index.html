@@ -156,13 +156,15 @@ results[id]=r;
 const state=el('state-'+id);
 if(state){
 const a=r.sections?.home_last5,b=r.sections?.away_last5;
+const h=r.sections?.head_to_head_last10;
+const summary=h&&h.count?'<div style="margin-top:8px;padding:10px;border:1px solid #64748b;border-radius:8px"><b>🏠 Ev sahibinin bu rakibe karşı kendi sahasındaki son '+h.count+' maçı</b><p>Galibiyet: '+h.home_wins+' · Beraberlik: '+h.draws+' · Mağlubiyet: '+h.away_wins+'</p></div>':'<div style="margin-top:8px">🏠 İkili ev sahibi performansı: Doğrulanmış maç bulunamadı</div>';
 if(a?.count>=5&&b?.count>=5){
 const avg=(a.scored+a.conceded+b.scored+b.conceded)/10;
 const p15=Math.max(0,Math.min(99,Math.round((1-Math.exp(-avg)*(1+avg))*100)));
 const p25=Math.max(0,Math.min(99,Math.round((1-Math.exp(-avg)*(1+avg+avg*avg/2))*100)));
 const color=p=>p>=80?'#16a34a':p>=60?'#d97706':'#dc2626';
-state.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px">'+[['1,5 Üst',p15],['2,5 Üst',p25]].map(([label,p])=>'<span style="border:1px solid '+color(p)+';border-radius:8px;padding:6px 9px;color:'+color(p)+'">'+label+' · '+p+' puan</span>').join('')+'</div><small>Son 5 maç gol ortalamasından türetilen model puanı; garanti veya bahis olasılığı değildir.</small>';
-}else state.textContent='⚠ Veri yetersiz — doğrulanmış puan hesaplanamadı';
+state.innerHTML=summary+'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px">'+[['1,5 Üst',p15],['2,5 Üst',p25]].map(([label,p])=>'<span style="border:1px solid '+color(p)+';border-radius:8px;padding:6px 9px;color:'+color(p)+'">'+label+' · '+p+' puan</span>').join('')+'</div><small>Son 5 maç gol ortalamasından türetilen model puanı; garanti veya bahis olasılığı değildir.</small>';
+}else state.innerHTML=summary+'<p>⚠ Son 5 genel maç verisi yetersiz — model puanı hesaplanamadı</p>';
 }
 const fmt=(label,s)=>!s?label+': Veri alınamadı':label+' — Son '+s.count+' maç\nToplam '+s.scored+' gol attı, '+s.conceded+' gol yedi\nİlk yarı '+s.first_half_scored+' attı, '+s.first_half_conceded+' yedi ('+s.first_half_count+' maç)\n'+s.games.map(g=>g.date+' | '+(g.venue==='home'?'Ev':'Deplasman')+' | '+g.opponent+' | '+g.scored+' attı, '+g.conceded+' yedi | İlk yarı '+(g.first_half_scored??'?')+'-'+(g.first_half_conceded??'?')).join('\n');
 const h=r.sections?.head_to_head_last10;
