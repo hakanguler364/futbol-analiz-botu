@@ -675,6 +675,11 @@ def analyze(match):
                        "home_espn_id": match.get("home_espn_id"), "away_espn_id": match.get("away_espn_id"),
                        "section_counts": {k: (v.get("count") if isinstance(v, dict) else None)
                                           for k, v in output["sections"].items() if k in ("home_last5", "away_last5", "head_to_head_last10")}}
+    if any(term in (str(output["home"]) + " " + str(output["away"])).casefold() for term in ("molde", "glimt")):
+        print("ANALYSIS_DIAGNOSTIC " + json.dumps({"home": output["home"], "away": output["away"],
+              "source": match.get("source"), "league": match.get("espn_league"),
+              "team_ids": [match.get("home_espn_id"), match.get("away_espn_id")],
+              "errors": output["errors"], "counts": output["debug"]["section_counts"]}, ensure_ascii=False), flush=True)
     CACHE[cache_key] = {"time": time.time(), "result": output}
     return output
 
