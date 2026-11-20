@@ -25,6 +25,49 @@ def fetch(path):
     except urllib.error.URLError as exc:
         raise ValueError(f"Football-Data baglanti hatasi: {exc.reason}") from exc
 
+STANDINGS_CACHE = {}
+
+def team_standings(match):
+    league = match.get("espn_league")
+    if not league:
+        return {"home": None, "away": None, "source": "Veri bulunamadı"}
+    now = time.time()
+    cached = STANDINGS_CACHE.get(league)
+    if not cached or now - cached[0] > 3600:
+        url = "https://site.api.espn.com/apis/v2/sports/soccer/" + urllib.parse.quote(league, safe="") + "/standings"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.load(response)
+            STANDINGS_CACHE[league] = (now, data)
+        except (OSError, ValueError, TypeError):
+            return {"home": None, "away": None, "source": "Veri bulunamadı"}
+    else:
+        data = cached[1]
+    entries = []
+    def collect(group):
+        entries.extend((group.get("standings") or {}).get("entries") or [])
+        for child in group.get("children") or []:
+            collect(child)
+    collect(data)
+    def position(side):
+        team_id = str(match.get(side + "_espn_id") or "")
+        if not team_id:
+            return None
+        for entry in entries:
+            if str((entry.get("team") or {}).get("id")) != team_id:
+                continue
+            for stat in entry.get("stats") or []:
+                if stat.get("name") in ("rank", "rankTotal", "playoffSeed") and stat.get("value") is not None:
+                    try:
+                        n = int(float(stat["value"]))
+                        return n if n > 0 else None
+                    except (ValueError, TypeError):
+                        pass
+            return None
+        return None
+    return {"home": position("home"), "away": position("away"), "source": "ESPN"}
+
 def valid_date(value):
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
         raise ValueError("Tarih YYYY-MM-DD olmali")
@@ -656,6 +699,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     "telegram_configured": bool(TG_TOKEN and TG_CHAT),
                     "analyzed": len(CACHE)
                 })
+                return
+            if path.startswith("/api/team-info/"):
+                mid = int(path.rsplit("/", 1)[1])
+                match = MATCH_CACHE.get("by_id", {}).get(mid)
+                if not match:
+                    self.send({"home_rank": None, "away_rank": None, "home_value": None, "away_value": None})
+                    return
+                ranks = team_standings(match)
+                self.send({"home_rank": ranks["home"], "away_rank": ranks["away"],
+                           "home_value": None, "away_value": None, "source": ranks["source"]})
                 return
             if path == "/api/matches":
                 date = urllib.parse.parse_qs(parsed.query).get(
