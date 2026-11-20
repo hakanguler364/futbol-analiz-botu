@@ -170,6 +170,7 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 .analysis-grid>.panel:first-child .form-team-name{font-size:14px!important;line-height:1.35!important}
 @media(max-width:700px){.team-versus .match-team strong{font-size:clamp(14px,4vw,19px)!important}.analysis-grid>.panel:first-child .form-team-name{font-size:13px!important}}
 
+.data-warning{width:100%;box-sizing:border-box;margin:9px 0;padding:8px 10px;border-radius:7px;text-align:center;font-size:12px;font-weight:800;letter-spacing:.15px;border:1px solid;line-height:1.5}.data-warning span{font-weight:600;margin-left:6px}.data-warning.red{color:#ff858e;background:#5b1d2940;border-color:#e64b60}.data-warning.amber{color:#ffd06c;background:#68471940;border-color:#dba43c}.data-warning.green{color:#75e8a6;background:#1a5b3740;border-color:#347d58}
 </style>
 </head>
 <body>
@@ -204,7 +205,7 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 </main>
 
 <script>
-let games=[],done=0,ok=0,bad=0,results={},runId=0,renderedAnalyses={},predictionScores={};
+let games=[],done=0,ok=0,bad=0,results={},runId=0,renderedAnalyses={},predictionScores={},dataCounts={};
 const el=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({
 '&':'&amp;','<':'&lt;','>':'&gt;',
@@ -321,6 +322,13 @@ async function sharePredictionCards(){
  }catch(e){if(e.name!=='AbortError')alert(e.message||'Görsel paylaşılamadı.');}
 }
 
+function dataWarning(id){
+ const d=dataCounts[id];if(!d)return '';
+ const low=Math.min(d.home,d.away,d.homeHalf,d.awayHalf);
+ const tone=low<5?'red':low<8?'amber':'green';
+ const label=low<5?'⚠️ DİKKAT! YETERSİZ MAÇ VERİSİ':low<8?'⚠️ DİKKAT! SINIRLI MAÇ VERİSİ':'✓ Veri sayısı yeterli';
+ return '<div class="data-warning '+tone+'">'+label+' <span>Ev: '+d.home+' · Dep: '+d.away+' · İY Ev: '+d.homeHalf+' · İY Dep: '+d.awayHalf+'</span></div>';
+}
 function renderGames(){
 const selected=el('leagueFilter').value;
 const filtered=predictionMatches();const type=el('predictionType').value;el('predictionSummary').textContent=type==='all'?'Tüm maçlar gösteriliyor.':filtered.length+' uygun maç · '+Object.keys(predictionScores).length+'/'+games.length+' maç hesaplandı';
@@ -330,7 +338,7 @@ el('matches').innerHTML=filtered.map(m=>`
 <p class="muted">🏆 <b>${esc(trLeague(m.competition?.name))}</b> · Türkiye saati</p>
 <div id="team-info-${esc(m.id)}" class="team-info-box"><span>📊 Lig sıralaması yükleniyor...</span><span>💶 Kadro değeri: Veri bulunamadı</span></div>
 
-<div id="prediction-${esc(m.id)}">${predictionScores[m.id]?Object.entries(predictionScores[m.id]).map(([k,v])=>'<span style="display:inline-block;margin:3px;padding:6px 9px;border-radius:9px;border:1px solid '+(Number.isFinite(v)?predictionColor(v):'#526785')+';color:'+(Number.isFinite(v)?predictionColor(v):'#aebcd2')+'">'+predictionLabels[k]+': '+(Number.isFinite(v)?'%'+Math.round(v):'Veri yok')+'</span>').join(''):''}</div><button onclick="send('${esc(m.id)}')">Telegram'a gönder</button>
+<div id="data-warning-${esc(m.id)}">${dataWarning(m.id)}</div><div id="prediction-${esc(m.id)}">${predictionScores[m.id]?Object.entries(predictionScores[m.id]).map(([k,v])=>'<span style="display:inline-block;margin:3px;padding:6px 9px;border-radius:9px;border:1px solid '+(Number.isFinite(v)?predictionColor(v):'#526785')+';color:'+(Number.isFinite(v)?predictionColor(v):'#aebcd2')+'">'+predictionLabels[k]+': '+(Number.isFinite(v)?'%'+Math.round(v):'Veri yok')+'</span>').join(''):''}</div><button onclick="send('${esc(m.id)}')">Telegram'a gönder</button>
 <div id="state-${esc(m.id)}" class="muted">${renderedAnalyses[m.id] || (results[m.id]?.error ? "Analiz alınamadı: "+esc(results[m.id].error) : "⏳ Otomatik analiz hazırlanıyor...")}</div>
 </div>
 `).join('')||'<p>Bu tarihlerde veri kaynağının kapsadığı maç bulunamadı.</p>';
@@ -379,6 +387,9 @@ const state=el('state-'+id);
 if(state){
 const a=r.sections?.home_last5,b=r.sections?.away_last5;
 const h=r.sections?.head_to_head_last10;
+const venueCount=(section,venue,half)=>{const rows=(section?.venue_games||section?.games||[]).filter(x=>x.venue===venue);return rows.filter(x=>half?(Number.isFinite(x.first_half_scored)&&Number.isFinite(x.first_half_conceded)):true).length;};
+dataCounts[id]={home:venueCount(a,'home',false),away:venueCount(b,'away',false),homeHalf:venueCount(a,'home',true),awayHalf:venueCount(b,'away',true)};
+const warningEl=el('data-warning-'+id);if(warningEl)warningEl.innerHTML=dataWarning(id);
 
 const color=p=>p>=75?'#34e981':p>=50?'#ffcf56':'#ff7889';
 const scoreClass=p=>p>=75?'score-green':p>=50?'score-yellow':'score-red';
