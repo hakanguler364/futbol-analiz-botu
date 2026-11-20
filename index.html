@@ -158,6 +158,7 @@ main,.match,.analysis-grid,.panel,.inner{min-width:0;max-width:100%}
 }
 .half-mini-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.half-mini{background:#122b43;border:1px solid #31506a;border-radius:7px;text-align:center;padding:5px 2px;font-size:10px;min-width:0}.half-mini strong{display:block;font-size:19px;line-height:1.25}.half-mini small{display:block;font-size:9px}.half-mini-panel{min-width:0}
 .half-detail{text-align:left;margin-top:6px;font-size:10px}.half-detail summary{cursor:pointer;color:#b6d9ff}.half-detail-row{display:flex;justify-content:space-between;gap:5px;border-top:1px solid #30465d;padding:4px 0;overflow-wrap:anywhere}.half-detail-row span{min-width:0}.half-detail-row b{white-space:nowrap}
+.team-info-box{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:8px 0;padding:10px;background:#14243a;border:1px solid #31506d;border-radius:9px;font-size:12px;color:#d7e9fa}.team-info-box span{overflow-wrap:anywhere}@media(max-width:480px){.team-info-box{font-size:11px;gap:6px;padding:7px}}
 </style>
 </head>
 <body>
@@ -241,6 +242,18 @@ el('progress').textContent=`${done}/${games.length} maç işlendi`;
 }
 
 function badge(team){const u=team?.crest||team?.logo||'';return /^https:\/\//i.test(u)?'<img class="team-badge" src="'+esc(u)+'" alt="'+esc(team?.name||'Takım')+' arması" loading="lazy" onerror="this.style.display=\'none\'">':'';}
+const teamInfoCache={};
+async function loadTeamInfo(m){
+ const node=document.getElementById('team-info-'+m.id);
+ if(!node)return;
+ try{
+  let d=teamInfoCache[m.id];
+  if(!d){d=await api('/api/team-info/'+encodeURIComponent(m.id));teamInfoCache[m.id]=d;}
+  if(!node.isConnected)return;
+  const rank=v=>Number.isInteger(v)&&v>0?v+'. sıra':'Veri bulunamadı';
+  node.innerHTML='<span>🏠 '+esc(m.homeTeam?.name)+': <b>'+rank(d.home_rank)+'</b> · Kadro değeri: <b>Veri bulunamadı</b></span><span>✈️ '+esc(m.awayTeam?.name)+': <b>'+rank(d.away_rank)+'</b> · Kadro değeri: <b>Veri bulunamadı</b></span>';
+ }catch(e){if(node.isConnected)node.textContent='Lig sırası ve kadro değeri: Veri bulunamadı';}
+}
 function renderGames(){
 const selected=el('leagueFilter').value;
 const filtered=games.filter(m=>!selected||(m.competition?.name||'Bilinmeyen lig')===selected).sort((a,b)=>new Date(a.utcDate||0)-new Date(b.utcDate||0));
@@ -248,12 +261,14 @@ el('matches').innerHTML=filtered.map(m=>`
 <div class="match">
 <div class="match-head"><b>🕒 ${esc(kickoffTR(m.utcDate))}</b><span class="muted">⚽ Maç Analizi</span></div><div class="team-versus"><div class="match-team match-team-home">${badge(m.homeTeam)}<strong>${esc(m.homeTeam?.name)}</strong></div><span class="versus-label">VS</span><div class="match-team match-team-away">${badge(m.awayTeam)}<strong>${esc(m.awayTeam?.name)}</strong></div></div>
 <p class="muted">🏆 <b>${esc(trLeague(m.competition?.name))}</b> · Türkiye saati</p>
+<div id="team-info-${esc(m.id)}" class="team-info-box"><span>📊 Lig sıralaması yükleniyor...</span><span>💶 Kadro değeri: Veri bulunamadı</span></div>
 
 <button onclick="send('${esc(m.id)}')">Telegram'a gönder</button>
 <div id="state-${esc(m.id)}" class="muted">${renderedAnalyses[m.id] || (results[m.id]?.error ? "Analiz alınamadı: "+esc(results[m.id].error) : "⏳ Otomatik analiz hazırlanıyor...")}</div>
 </div>
 `).join('')||'<p>Bu tarihlerde veri kaynağının kapsadığı maç bulunamadı.</p>';
 update();
+filtered.forEach(m=>loadTeamInfo(m));
 }
 async function load(){
 const date=el('matchDate').value;
