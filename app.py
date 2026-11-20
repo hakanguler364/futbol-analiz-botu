@@ -269,20 +269,33 @@ def egypt_season_fallback(name):
             "data_scope": "season", "data_as_of": "2026-11-15",
             "source_url": "https://stadiro.com/leagues/egypt/division-2-a/"}
 
+def team_match_key(name):
+    """Normalize provider spellings for matching, never change displayed names."""
+    import unicodedata
+    value = str(name or "").casefold().replace("ø", "o").replace("æ", "ae").replace("ß", "ss")
+    value = unicodedata.normalize("NFKD", value)
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9]", "", value)
+
+def sportsdb_team_alias(name):
+    key = team_match_key(name)
+    return {"bodoglimt": "Bodø/Glimt", "fkbodoglimt": "Bodø/Glimt",
+            "moldefk": "Molde", "molde": "Molde"}.get(key, name)
+
 def sportsdb_recent(match, side):
     """Best-effort recent completed matches for fixture-only teams; never fabricate scores."""
     name = match[side + "Team"]["name"]
     aliases = {"El Dakhleya": "El Dakhleya", "Al Dakhleia": "El Dakhleya",
                "WE SC": "Telecom Egypt", "El Entag El Harby": "El Entag El Harby",
                "Al Sekka El Hadid": "El Sekka El Hadid"}
-    query = urllib.parse.urlencode({"t": aliases.get(name, name)})
+    query = urllib.parse.urlencode({"t": sportsdb_team_alias(aliases.get(name, name))})
     def get_json(url):
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=10) as response:
             return json.load(response)
     teams = get_json("https://www.thesportsdb.com/api/v1/json/123/searchteams.php?" + query).get("teams") or []
-    normalized = lambda x: re.sub(r"[^a-z0-9]", "", str(x or "").casefold())
-    exact = [t for t in teams if normalized(t.get("strTeam")) == normalized(aliases.get(name, name))]
+    normalized = team_match_key
+    exact = [t for t in teams if normalized(t.get("strTeam")) == normalized(sportsdb_team_alias(aliases.get(name, name)))]
     if not exact:
         return None
     team_id = str(exact[0].get("idTeam") or "")
@@ -544,12 +557,12 @@ def sportsdb_head_to_head(match):
     if not home_name or not away_name:
         return None
     def lookup(name):
-        url = "https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=" + urllib.parse.quote(name)
+        url = "https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=" + urllib.parse.quote(sportsdb_team_alias(name))
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=9) as response:
             teams = json.load(response).get("teams") or []
-        norm = lambda x: re.sub(r"[^a-z0-9]", "", (x or "").lower())
-        exact = next((t for t in teams if norm(t.get("strTeam")) == norm(name)), None)
+        norm = team_match_key
+        exact = next((t for t in teams if norm(t.get("strTeam")) == norm(sportsdb_team_alias(name))), None)
         return exact.get("idTeam") if exact else None
     home_id, away_id = lookup(home_name), lookup(away_name)
     if not home_id or not away_id:
