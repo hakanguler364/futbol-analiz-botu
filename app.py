@@ -392,23 +392,31 @@ def espn_recent(match, side):
     venue_games = [dict(x) for x in rows if x["venue"] == venue and x["date"] >= season_start(match["utcDate"])]
     recent_games = [dict(x) for x in rows if x["date"] >= season_start(match["utcDate"])]
     checked = {}
-    for row in venue_games:
-        event_id = row.get("_event_id")
-        if event_id not in checked:
-            checked[event_id] = espn_halftime_scores(league, event_id, team_id)
-        half = checked[event_id]
-        if half is not None:
-            row["first_half_scored"], row["first_half_conceded"] = half
+    # Populate one canonical match record, then derive venue_games from it.
+    # Previously venue_games was copied before halftime enrichment, leaving
+    # games with missing halftime values and producing inconsistent panels.
+    for row in recent_games:
+        if row["venue"] == venue:
+            event_id = row.get("_event_id")
+            if event_id not in checked:
+                checked[event_id] = espn_halftime_scores(league, event_id, team_id)
+            half = checked[event_id]
+            if half is not None:
+                row["first_half_scored"], row["first_half_conceded"] = half
         row.pop("_event_id", None)
         row.pop("_sort", None)
+    venue_games = [row for row in recent_games if row["venue"] == venue]
+    known_half = [row for row in venue_games if row["first_half_scored"] is not None and row["first_half_conceded"] is not None]
     return {"games": recent_games, "venue_games": venue_games,
             "venue_count": len(venue_games),
             "venue_scored": sum(x["scored"] for x in venue_games),
             "venue_conceded": sum(x["conceded"] for x in venue_games),
             "scored": sum(x["scored"] for x in recent_games),
             "conceded": sum(x["conceded"] for x in recent_games),
-            "count": len(recent_games), "first_half_scored": 0,
-            "first_half_conceded": 0, "first_half_count": 0}
+            "count": len(recent_games),
+            "first_half_scored": sum(row["first_half_scored"] for row in known_half),
+            "first_half_conceded": sum(row["first_half_conceded"] for row in known_half),
+            "first_half_count": len(known_half)}
 
 def espn_head_to_head(match):
     league = match.get("espn_league")
