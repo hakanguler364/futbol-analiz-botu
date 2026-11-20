@@ -299,8 +299,12 @@ def sportsdb_recent(match, side):
             "first_half_count": len(known)}
 
 def espn_halftime_scores(league, event_id, team_id):
-    """Fetch verified period-one scores; missing periods stay unknown."""
-    if not event_id:
+    """Return first-half scored/conceded from the selected team's perspective.
+
+    ESPN competitor order is not guaranteed to be home/away order.
+    Match team IDs and cross-check the halftime totals against full-time.
+    """
+    if not event_id or not team_id:
         return None
     url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/" +
            urllib.parse.quote(str(league), safe="") +
@@ -311,21 +315,34 @@ def espn_halftime_scores(league, event_id, team_id):
             data = json.load(response)
         header = (data.get("header") or {}).get("competitions") or []
         competitors = (header[0] if header else {}).get("competitors") or []
+        if len(competitors) != 2:
+            return None
         values = {}
-        for c in competitors:
-            periods = c.get("linescores") or []
-            if not periods:
+        for competitor in competitors:
+            cid = str((competitor.get("team") or {}).get("id") or "")
+            periods = competitor.get("linescores") or []
+            if not cid or not periods:
                 return None
             first = periods[0]
+            # Soccer's first period must be period 1, not an aggregate.
+            if first.get("period") not in (None, 1):
+                return None
             raw = first.get("value", first.get("displayValue"))
             if raw is None:
                 return None
-            values[str((c.get("team") or {}).get("id"))] = int(float(raw))
+            half = int(float(raw))
+            full = competitor.get("score")
+            if isinstance(full, dict):
+                full = full.get("value", full.get("displayValue"))
+            if half < 0 or (full is not None and half > int(float(full))):
+                return None
+            values[cid] = half
         ours = str(team_id)
-        others = [value for key, value in values.items() if key != ours]
-        if ours in values and len(others) == 1:
-            return values[ours], others[0]
-    except (OSError, ValueError, TypeError, KeyError, IndexError):
+        if ours not in values or len(values) != 2:
+            return None
+        opponent_id = next(cid for cid in values if cid != ours)
+        return values[ours], values[opponent_id]
+    except (OSError, ValueError, TypeError, KeyError, IndexError, StopIteration):
         return None
     return None
 
