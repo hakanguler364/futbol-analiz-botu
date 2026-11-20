@@ -402,17 +402,18 @@ def espn_recent(match, side):
            urllib.parse.quote(str(league), safe="") + "/teams/" +
            urllib.parse.quote(str(team_id), safe="") + "/schedule?limit=300")
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=12) as response:
-        data = json.load(response)
-    # ESPN's default team schedule may select the wrong season for calendar-year leagues.
-    # Retry the fixture's season explicitly when the default feed is empty.
-    if not data.get("events"):
-        season_url = url + "&season=" + str(kickoff.year)
+    # Always request the fixture year: ESPN's default schedule can be a different season.
+    data = {"events": []}
+    for candidate in (url + "&season=" + str(kickoff.year), url):
         try:
-            with urllib.request.urlopen(urllib.request.Request(season_url, headers={"User-Agent": "Mozilla/5.0"}), timeout=12) as response:
-                data = json.load(response)
+            request = urllib.request.Request(candidate, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+            with urllib.request.urlopen(request, timeout=12) as response:
+                payload = json.load(response)
+            if payload.get("events"):
+                data = payload
+                break
         except (OSError, ValueError, TypeError):
-            pass
+            continue
     rows = []
     for event in data.get("events", []):
         try:
@@ -670,6 +671,10 @@ def analyze(match):
         "Dogrulanamayan bilgiler tahmin edilmedi."
     ]
     output["status"] = "partial"
+    output["debug"] = {"fixture_source": match.get("source"), "espn_league": match.get("espn_league"),
+                       "home_espn_id": match.get("home_espn_id"), "away_espn_id": match.get("away_espn_id"),
+                       "section_counts": {k: (v.get("count") if isinstance(v, dict) else None)
+                                          for k, v in output["sections"].items() if k in ("home_last5", "away_last5", "head_to_head_last10")}}
     CACHE[cache_key] = {"time": time.time(), "result": output}
     return output
 
