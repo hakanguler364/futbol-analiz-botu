@@ -404,14 +404,13 @@ def espn_recent(match, side):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
     # Always request the fixture year: ESPN's default schedule can be a different season.
     data = {"events": []}
-    for candidate in (url + "&season=" + str(kickoff.year), url):
+    for candidate in (url + "&season=" + str(kickoff.year), url + "&season=" + str(kickoff.year - 1), url):
         try:
             request = urllib.request.Request(candidate, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
             with urllib.request.urlopen(request, timeout=12) as response:
                 payload = json.load(response)
             if payload.get("events"):
-                data = payload
-                break
+                data["events"].extend(payload["events"])
         except (OSError, ValueError, TypeError):
             continue
     rows = []
@@ -442,6 +441,7 @@ def espn_recent(match, side):
                          "_sort": when.isoformat(), "_event_id": event.get("id")})
         except (ValueError, TypeError, KeyError, IndexError):
             continue
+    rows = list({(r["_event_id"] or r["_sort"], r["venue"]): r for r in rows}.values())
     rows.sort(key=lambda x: x["_sort"], reverse=True)
     venue = "home" if side == "home" else "away"
     venue_games = [dict(x) for x in rows if x["venue"] == venue and x["date"] >= season_start(match["utcDate"], match.get("espn_league"))]
