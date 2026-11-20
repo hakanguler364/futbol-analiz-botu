@@ -408,8 +408,11 @@ def espn_recent(match, side):
     # Retry the fixture's season explicitly when the default feed is empty.
     if not data.get("events"):
         season_url = url + "&season=" + str(kickoff.year)
-        with urllib.request.urlopen(urllib.request.Request(season_url, headers={"User-Agent": "Mozilla/5.0"}), timeout=12) as response:
-            data = json.load(response)
+        try:
+            with urllib.request.urlopen(urllib.request.Request(season_url, headers={"User-Agent": "Mozilla/5.0"}), timeout=12) as response:
+                data = json.load(response)
+        except (OSError, ValueError, TypeError):
+            pass
     rows = []
     for event in data.get("events", []):
         try:
