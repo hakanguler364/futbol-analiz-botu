@@ -224,8 +224,17 @@ def matches(date):
                 break
         if found is None:
             merged[(*pair, kickoff)] = m
-        elif fixture_quality(m) > fixture_quality(merged[found]):
-            merged[found] = m
+        else:
+            old = merged[found]
+            # Preserve original provider names for reliable history fallback.
+            for candidate in (old, m):
+                if candidate.get("source") == "TheSportsDB":
+                    backup = {"homeTeam": candidate["homeTeam"], "awayTeam": candidate["awayTeam"],
+                              "source": "TheSportsDB", "utcDate": candidate["utcDate"]}
+                    old["sportsdb_fallback_match"] = backup
+                    m["sportsdb_fallback_match"] = backup
+            if fixture_quality(m) > fixture_quality(old):
+                merged[found] = m
     items = list(merged.values())
     items.sort(key=lambda m: m.get("utcDate") or "")
     from collections import Counter
@@ -679,7 +688,7 @@ def analyze(match):
                     value = None
                 if not value or not value.get("games"):
                     try:
-                        alternative = sportsdb_recent(match, side)
+                        alternative = sportsdb_recent(match.get("sportsdb_fallback_match") or match, side)
                         if alternative and alternative.get("games"):
                             value = alternative
                     except (OSError, ValueError, TypeError, KeyError) as exc:
