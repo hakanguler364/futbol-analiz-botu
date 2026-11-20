@@ -84,7 +84,7 @@ def matches(date):
     leagues = ["eng.1","eng.2","eng.3","eng.4","eng.fa","eng.league_cup","esp.1","esp.2","esp.copa_del_rey","ger.1","ger.2","ger.dfb_pokal","ita.1","ita.2","ita.coppa_italia","fra.1","fra.2","fra.coupe_de_france","tur.1","tur.2","tur.cup","ned.1","ned.2","ned.cup","por.1","por.2","por.taca.portugal","bel.1","bel.2","sco.1","sco.2","sco.3","sco.4","sco.fa","irl.1","nir.1","wal.1","aut.1","sui.1","den.1","nor.1","swe.1","fin.1","pol.1","cze.1","gre.1","rou.1","rus.1","ukr.1","cro.1","srb.1","hun.1","usa.1","usa.open","mex.1","mex.2","bra.1","bra.2","bra.copa","arg.1","arg.2","col.1","chi.1","uru.1","par.1","per.1","ecu.1","ven.1","bol.1","crc.1","hon.1","gua.1","slv.1","ksa.1","uae.1","qat.1","ind.1","jpn.1","jpn.2","kor.1","chn.1","aus.1","aus.2","idn.1","tha.1","mys.1","sgp.1","uefa.champions","uefa.europa","uefa.europa.conf","uefa.nations","uefa.euro","uefa.euro.qualifying","fifa.world","fifa.worldq.uefa","fifa.worldq.conmebol","fifa.worldq.concacaf","fifa.worldq.afc","fifa.worldq.caf","fifa.friendly","concacaf.champions","conmebol.libertadores","conmebol.sudamericana","afc.champions","caf.champions","fifa.club.world_cup"]
     def get_league(league):
         # Turkey (UTC+3) calendar day overlaps two UTC calendar dates.
-        utc_days = [(datetime.date.fromisoformat(date) - datetime.timedelta(days=1)).strftime("%Y%m%d"), date.replace("-", "")]
+        utc_days = [date.replace("-", ""), (datetime.date.fromisoformat(date) - datetime.timedelta(days=1)).strftime("%Y%m%d")]
         found = []
         for utc_day in utc_days:
             url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + utc_day + "&limit=500"
@@ -92,7 +92,8 @@ def matches(date):
             try:
                 with urllib.request.urlopen(req, timeout=8) as response:
                     data = json.load(response)
-            except Exception:
+            except Exception as exc:
+                print("FIXTURE_PROVIDER_ERROR " + json.dumps({"league": league, "day": utc_day, "error": str(exc)[:180]}), flush=True)
                 continue
             for event in data.get("events", []):
                 kickoff = event.get("date", "")
@@ -140,8 +141,8 @@ def matches(date):
             if pair not in existing:
                 items.append(m)
                 existing.add(pair)
-    except Exception:
-        pass
+    except Exception as exc:
+        print("SPORTSDB_FIXTURE_ERROR " + str(exc)[:180], flush=True)
     if TOKEN:
         try:
             extra = fetch("/matches?" + urllib.parse.urlencode({"dateFrom": date, "dateTo": date})).get("matches", [])
