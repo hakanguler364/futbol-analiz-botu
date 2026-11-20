@@ -531,34 +531,45 @@ def analyze(match):
         "sections": {},
         "errors": []
     }
-    for key, team in (("home_last5", home), ("away_last5", away)):
+    # Fetch independent team histories and head-to-head concurrently.
+    # A short cache avoids repeating slow provider calls for the same fixture.
+    import concurrent.futures
+    cache_key = ("analysis", match["id"])
+    cached = CACHE.get(cache_key)
+    if cached and time.time() - cached["time"] < 600:
+        return cached["result"]
+
+    def load_section(key, team):
+        errors = []
         try:
-            if match.get("source") == "ESPN":
-                output["sections"][key] = espn_recent(match, "home" if key == "home_last5" else "away")
+            if key == "head_to_head_last10":
+                value = espn_head_to_head(match) if match.get("source") == "ESPN" else sportsdb_head_to_head(match)
+            elif match.get("source") == "ESPN":
+                value = espn_recent(match, "home" if key == "home_last5" else "away")
             elif team.get("id") is not None:
-                output["sections"][key] = stats(recent(team["id"]), team["id"])
+                value = stats(recent(team["id"]), team["id"])
             else:
-                # TheSportsDB can time out or reject queries. Do not let that
-                # prevent a clearly labeled, locally available season fallback.
                 egypt_fallback = (match.get("competition", {}).get("name") == "Egyptian Second Division A"
                                   and str(match.get("utcDate") or "")[:10] == "2026-11-19")
                 try:
-                    recent_data = sportsdb_recent(match, "home" if key == "home_last5" else "away")
-                except (OSError, ValueError, TypeError, KeyError) as source_error:
-                    output["errors"].append(f"{key} SportsDB: {source_error}")
-                    recent_data = None
-                if not recent_data or not recent_data.get("games"):
+                    value = sportsdb_recent(match, "home" if key == "home_last5" else "away")
+                except (OSError, ValueError, TypeError, KeyError) as exc:
+                    errors.append(f"{key} SportsDB: {exc}")
+                    value = None
+                if not value or not value.get("games"):
                     fallback = egypt_season_fallback(team.get("name")) if egypt_fallback else None
-                    recent_data = fallback or recent_data
-                output["sections"][key] = recent_data
+                    value = fallback or value
+            return key, value, errors
         except Exception as exc:
-            output["sections"][key] = None
-            output["errors"].append(f"{key}: {exc}")
-    try:
-        output["sections"]["head_to_head_last10"] = espn_head_to_head(match) if match.get("source") == "ESPN" else sportsdb_head_to_head(match)
-    except Exception as exc:
-        output["sections"]["head_to_head_last10"] = None
-        output["errors"].append(f"head_to_head_last10: {exc}")
+            return key, None, errors + [f"{key}: {exc}"]
+
+    jobs = (("home_last5", home), ("away_last5", away), ("head_to_head_last10", None))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [pool.submit(load_section, key, team) for key, team in jobs]
+        for future in concurrent.futures.as_completed(futures):
+            key, value, errors = future.result()
+            output["sections"][key] = value
+            output["errors"].extend(errors)
     for key in ("standings", "league_goals",
                 "first_half_scores", "half_time_full_time", "squad_values",
                 "critical_absences", "historical_odds", "coach_changes"):
@@ -568,6 +579,7 @@ def analyze(match):
         "Dogrulanamayan bilgiler tahmin edilmedi."
     ]
     output["status"] = "partial"
+    CACHE[cache_key] = {"time": time.time(), "result": output}
     return output
 
 def telegram(message):
