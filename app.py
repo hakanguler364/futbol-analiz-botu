@@ -194,6 +194,39 @@ def matches(date):
                 return True
         return False
     items = [m for m in items if not is_womens_match(m)]
+    # Different providers may publish the same fixture with different team spelling.
+    # Prefer a record with usable team IDs / ESPN history rather than a fixture-only copy.
+    def fixture_key(name):
+        value = team_match_key(name)
+        aliases = {"fkbodoglimt": "bodoglimt", "bodoglimt": "bodoglimt",
+                   "moldefk": "molde", "molde": "molde"}
+        return aliases.get(value, value)
+    def fixture_quality(m):
+        return (int(bool(m.get("home_espn_id") and m.get("away_espn_id"))) * 100
+                + int(m.get("source") == "ESPN") * 30
+                + int(bool(m.get("homeTeam", {}).get("id") and m.get("awayTeam", {}).get("id"))) * 80
+                + int(m.get("source") == "TheSportsDB") * 10)
+    merged = {}
+    for m in items:
+        pair = (fixture_key(m["homeTeam"]["name"]), fixture_key(m["awayTeam"]["name"]))
+        # Same opponents can play twice; retain separate matches if kickoffs differ by > 6h.
+        try:
+            kickoff = datetime.datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00"))
+        except (ValueError, TypeError, AttributeError):
+            kickoff = None
+        found = None
+        for key, old in merged.items():
+            if key[:2] != pair:
+                continue
+            old_time = key[2]
+            if kickoff is None or old_time is None or abs((kickoff - old_time).total_seconds()) <= 21600:
+                found = key
+                break
+        if found is None:
+            merged[(*pair, kickoff)] = m
+        elif fixture_quality(m) > fixture_quality(merged[found]):
+            merged[found] = m
+    items = list(merged.values())
     items.sort(key=lambda m: m.get("utcDate") or "")
     from collections import Counter
     by_source = dict(Counter(m.get("source", "Football-Data") for m in items))
