@@ -295,7 +295,10 @@ else bad++;
 results[id]=r;
 const state=el('state-'+id);
 if(state){
-const a=r.sections?.home_last5,b=r.sections?.away_last5;
+const a=r.sections?.home_last5;
+// Deplasman ilk yari atma/yeme alanlarini ekranda ve puanlamada ayni sekilde duzelt.
+const fixAwayHalf=(s)=>{if(!s)return s;const swap=(g)=>({...g,first_half_scored:g.first_half_conceded,first_half_conceded:g.first_half_scored});return {...s,games:(s.games||[]).map(swap),venue_games:(s.venue_games||[]).map(swap)};};
+const b=fixAwayHalf(r.sections?.away_last5);
 const h=r.sections?.head_to_head_last10;
 
 const color=p=>p>=75?'#34e981':p>=50?'#ffcf56':'#ff7889';
