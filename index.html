@@ -309,9 +309,19 @@ const halfMini='<div class="panel half-mini-panel"><h3>⏱ İlk Yarı Gol Analiz
 const venueHalf=(s,venue)=>{const g=(s?.games||[]).filter(x=>x.venue===venue&&Number.isFinite(x.first_half_scored)&&Number.isFinite(x.first_half_conceded));return g;};
 const homeHalf=venueHalf(a,'home'),awayHalf=venueHalf(b,'away');
 const halfAll=[...homeHalf,...awayHalf];
+// Reject malformed, contradictory and insufficient first-half records.
+const halfValidity=(section,venue)=>{
+ const games=(section?.venue_games||section?.games||[]).filter(g=>g.venue===venue);
+ const known=games.filter(g=>Number.isInteger(g.first_half_scored)&&Number.isInteger(g.first_half_conceded));
+ const invalid=games.some(g=>(g.first_half_scored!==null&&g.first_half_scored!==undefined&&!Number.isInteger(g.first_half_scored))||(g.first_half_conceded!==null&&g.first_half_conceded!==undefined&&!Number.isInteger(g.first_half_conceded))||Number(g.first_half_scored)<0||Number(g.first_half_conceded)<0);
+ const mismatch=known.some(g=>g.first_half_scored>g.scored||g.first_half_conceded>g.conceded);
+ return invalid||mismatch?'Veri güvenilir değil':known.length<5?'Yeterli veri bulunamadı':null;
+};
+const halfIssue=halfValidity(a,'home')||halfValidity(b,'away');
+
 let lambda=null,halfMethod='';
-if(homeHalf.length>=2&&awayHalf.length>=2){lambda=(homeHalf.reduce((n,g)=>n+g.first_half_scored+g.first_half_conceded,0)/homeHalf.length+awayHalf.reduce((n,g)=>n+g.first_half_scored+g.first_half_conceded,0)/awayHalf.length)/2;halfMethod='Gerçek ilk yarı verisi';}
-else if(halfAll.length>=3){lambda=halfAll.reduce((n,g)=>n+g.first_half_scored+g.first_half_conceded,0)/halfAll.length;halfMethod='Sınırlı ilk yarı verisi';}
+if(!halfIssue&&homeHalf.length>=5&&awayHalf.length>=5){lambda=(homeHalf.reduce((n,g)=>n+g.first_half_scored+g.first_half_conceded,0)/homeHalf.length+awayHalf.reduce((n,g)=>n+g.first_half_scored+g.first_half_conceded,0)/awayHalf.length)/2;halfMethod='Gerçek ilk yarı verisi';}
+else if(!halfIssue&&halfAll.length>=10){lambda=halfAll.reduce((n,g)=>n+g.first_half_scored+g.first_half_conceded,0)/halfAll.length;halfMethod='Sınırlı ilk yarı verisi';}
 
 const poissonOver=(l,k)=>l===null?null:100*(1-Math.exp(-l)*Array.from({length:k+1},(_,i)=>{let factorial=1;for(let j=2;j<=i;j++)factorial*=j;return Math.pow(l,i)/factorial;}).reduce((x,y)=>x+y,0));
 const fullLambda=valid(a)&&valid(b)?((a.scored+a.conceded)/a.count+(b.scored+b.conceded)/b.count)/2:null;
@@ -344,20 +354,20 @@ const homeDefenseRisk=homeHalfAttack!==null&&awayHalfDefense!==null&&homeHalfAtt
 const awayDefenseRisk=awayHalfAttack!==null&&homeHalfDefense!==null&&awayHalfAttack>75&&homeHalfDefense<40;
 const defenseRiskCount=Number(homeDefenseRisk)+Number(awayDefenseRisk);
 const halfScore=poissonOver(lambda,0),adjustedHalfScore=halfScore===null?null:Math.max(0,halfScore-15*defenseRiskCount),generalScore=poissonOver(fullLambda,1);
-const halfPanel='<div class="inner"><h3>⏱ İlk Yarı Gol Seçenekleri</h3>'+bar('İY 0,5 Üst',adjustedHalfScore)+bar('İY 1,5 Üst',poissonOver(lambda,1))+bar('İY 2,5 Üst',poissonOver(lambda,2))+'<small>'+esc(halfMethod||'Yeterli veri yok')+' · Model puanı</small></div>';
+const halfPanel='<div class="inner"><h3>⏱ İlk Yarı Gol Seçenekleri</h3>'+(halfIssue?'<p class="error">⚠️ '+halfIssue+' — ilk yarı puanları kapatıldı.</p>':'')+bar('İY 0,5 Üst',adjustedHalfScore)+bar('İY 1,5 Üst',poissonOver(lambda,1))+bar('İY 2,5 Üst',poissonOver(lambda,2))+'<small>'+esc(halfMethod||'Yeterli veri yok')+' · Model puanı</small></div>';
 const riskReasons=[];
 if(homeDefenseRisk)riskReasons.push('⚠️ Dikkat: Rakip savunması güçlü — ev sahibinin ilk yarı gol atma oranı %'+homeHalfAttack+', deplasmanın gol yeme oranı %'+awayHalfDefense+'. İY 0,5 Üst puanı 15 düşürüldü.');
 if(awayDefenseRisk)riskReasons.push('⚠️ Dikkat: Rakip savunması güçlü — deplasmanın ilk yarı gol atma oranı %'+awayHalfAttack+', ev sahibinin gol yeme oranı %'+homeHalfDefense+'. İY 0,5 Üst puanı 15 düşürüldü.');
 if(homeAttack!==null&&homeAttack<1)riskReasons.push('❌ Ev sahibinin gol atma ortalaması düşük ('+fmtAvg(homeAttack)+'/maç)');
 if(awayConcede!==null&&awayConcede>=1.25)riskReasons.push('✅ Deplasmanın gol yeme ortalaması yüksek ('+fmtAvg(awayConcede)+'/maç)');
 if(awayConcede!==null&&awayConcede<1)riskReasons.push('⚠️ Deplasmanın gol yeme ortalaması düşük ('+fmtAvg(awayConcede)+'/maç)');
-if(lambda===null)riskReasons.push('⚠️ İlk yarı için doğrulanmış veri yetersiz; puan gösterilmiyor');
+if(halfIssue)riskReasons.push('⚠️ '+halfIssue+'; ilk yarı puanı ve sistem önerisi gösterilmiyor');
 if(!riskReasons.length)riskReasons.push('ℹ️ Belirgin risk işareti yok; model tahminidir');
 const riskFlag=(homeAttack!==null&&homeAttack<1)||(awayConcede!==null&&awayConcede<1)||lambda===null||defenseRiskCount>0;
 const riskPanel='<div class="panel risk-panel"><h3>⚠️ RİSK UYARISI</h3>'+riskReasons.map(x=>'<div class="risk-line">'+x+'</div>').join('')+'<div class="recommend"><b>Sonuç:</b> '+(riskFlag?'İlk yarı 0,5 Üst için temkinli değerlendirme gerekiyor.':'Belirgin ek risk uyarısı yok.')+'</div></div>';
-const recommended=[['1,5 Üst',generalScore],['2,5 Alt',fullLambda===null?null:100-poissonOver(fullLambda,2)],['İY 0,5 Üst',adjustedHalfScore],['İY 1,5 Üst',poissonOver(lambda,1)]].filter(x=>x[1]!==null).sort((x,y)=>y[1]-x[1]);
+const recommended=halfIssue?[]:[['1,5 Üst',generalScore],['2,5 Alt',fullLambda===null?null:100-poissonOver(fullLambda,2)],['İY 0,5 Üst',adjustedHalfScore],['İY 1,5 Üst',poissonOver(lambda,1)]].filter(x=>x[1]!==null).sort((x,y)=>y[1]-x[1]);
 const safest=recommended.find(x=>!riskFlag||x[0]!=='İY 0,5 Üst')||recommended[0];
-const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3>'+(safest?'<div class="metric"><span>✅ Daha Güvenli Seçenek</span><b class="score-green">'+safest[0]+' ('+Math.round(safest[1])+' puan)</b></div>':'<p>Öneri için yeterli veri yok</p>')+(halfScore!==null?'<div class="metric"><span>⚠️ Alternatif '+(riskFlag?'(Riskli)':'')+'</span><b class="score-yellow">İY 0,5 Üst ('+Math.round(adjustedHalfScore)+' puan)</b></div>':'')+'<small>Model puanları kesinlik veya garanti değildir.</small></div>';
+const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3>'+(safest?'<div class="metric"><span>✅ Daha Güvenli Seçenek</span><b class="score-green">'+safest[0]+' ('+Math.round(safest[1])+' puan)</b></div>':'<p>Öneri için yeterli veri yok</p>')+(halfScore!==null&&!halfIssue?'<div class="metric"><span>⚠️ Alternatif '+(riskFlag?'(Riskli)':'')+'</span><b class="score-yellow">İY 0,5 Üst ('+Math.round(adjustedHalfScore)+' puan)</b></div>':'')+'<small>Model puanları kesinlik veya garanti değildir.</small></div>';
 state.innerHTML='<div class="analysis-grid">'+teamPanel+goalsPanel+avgPanel+h2hPanel+venueHPanel+halfMini+comparePanel+riskPanel+'<div class="panel third">'+general+'</div><div class="panel third">'+halfPanel+'</div><div class="panel third">'+other+'</div>'+systemPanel+'</div>';
 renderedAnalyses[id]=state.innerHTML;
 
