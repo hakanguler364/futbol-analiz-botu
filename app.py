@@ -203,10 +203,12 @@ def matches(date):
     MATCH_CACHE[date] = {"matches": items, "time": time.time()}
     return items, False
 
-def season_start(date_text):
+def season_start(date_text, league=None):
     """Season boundary: July for cross-year leagues; January for calendar-year leagues."""
     day = str(date_text)[:10]
     year, month = int(day[:4]), int(day[5:7])
+    if league in ("nor.1", "swe.1", "fin.1", "irl.1", "usa.1", "bra.1", "arg.1"):
+        return f"{year}-01-01"
     return f"{year if month >= 7 else year - 1}-07-01"
 
 def recent(team_id):
@@ -332,8 +334,8 @@ def sportsdb_recent(match, side):
     rows = list({(r["date"], r["opponent"], r["venue"], r["scored"], r["conceded"]): r for r in rows}.values())
     rows.sort(key=lambda row: row["date"], reverse=True)
     venue = "home" if side == "home" else "away"
-    venue_games = [r for r in rows if r["venue"] == venue and r["date"] >= season_start(match["utcDate"])]
-    rows = [r for r in rows if r["date"] >= season_start(match["utcDate"])]
+    venue_games = [r for r in rows if r["venue"] == venue and r["date"] >= season_start(match["utcDate"], match.get("espn_league"))]
+    rows = [r for r in rows if r["date"] >= season_start(match["utcDate"], match.get("espn_league"))]
     known = [r for r in rows if r["first_half_scored"] is not None and r["first_half_conceded"] is not None]
     return {"games": rows, "venue_games": venue_games, "venue_count": len(venue_games), "venue_scored": sum(r["scored"] for r in venue_games), "venue_conceded": sum(r["conceded"] for r in venue_games), "count": len(rows), "scored": sum(r["scored"] for r in rows),
             "conceded": sum(r["conceded"] for r in rows),
@@ -402,6 +404,12 @@ def espn_recent(match, side):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=12) as response:
         data = json.load(response)
+    # ESPN's default team schedule may select the wrong season for calendar-year leagues.
+    # Retry the fixture's season explicitly when the default feed is empty.
+    if not data.get("events"):
+        season_url = url + "&season=" + str(kickoff.year)
+        with urllib.request.urlopen(urllib.request.Request(season_url, headers={"User-Agent": "Mozilla/5.0"}), timeout=12) as response:
+            data = json.load(response)
     rows = []
     for event in data.get("events", []):
         try:
@@ -432,8 +440,8 @@ def espn_recent(match, side):
             continue
     rows.sort(key=lambda x: x["_sort"], reverse=True)
     venue = "home" if side == "home" else "away"
-    venue_games = [dict(x) for x in rows if x["venue"] == venue and x["date"] >= season_start(match["utcDate"])]
-    recent_games = [dict(x) for x in rows if x["date"] >= season_start(match["utcDate"])]
+    venue_games = [dict(x) for x in rows if x["venue"] == venue and x["date"] >= season_start(match["utcDate"], match.get("espn_league"))]
+    recent_games = [dict(x) for x in rows if x["date"] >= season_start(match["utcDate"], match.get("espn_league"))]
     checked = {}
     # Populate one canonical match record, then derive venue_games from it.
     # Previously venue_games was copied before halftime enrichment, leaving
@@ -613,7 +621,19 @@ def analyze(match):
             if key == "head_to_head_last10":
                 value = espn_head_to_head(match) if match.get("source") == "ESPN" else sportsdb_head_to_head(match)
             elif match.get("source") == "ESPN":
-                value = espn_recent(match, "home" if key == "home_last5" else "away")
+                side = "home" if key == "home_last5" else "away"
+                try:
+                    value = espn_recent(match, side)
+                except (OSError, ValueError, TypeError, KeyError) as exc:
+                    errors.append(f"{key} ESPN: {exc}")
+                    value = None
+                if not value or not value.get("games"):
+                    try:
+                        alternative = sportsdb_recent(match, side)
+                        if alternative and alternative.get("games"):
+                            value = alternative
+                    except (OSError, ValueError, TypeError, KeyError) as exc:
+                        errors.append(f"{key} SportsDB: {exc}")
             elif team.get("id") is not None:
                 value = stats(recent(team["id"]), team["id"])
             else:
