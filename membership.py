@@ -84,7 +84,7 @@ def create_member(db, phone, password, *, admin=False, days=30):
     now = int(time.time())
     cursor = db.execute(
         "INSERT INTO members(phone,password_hash,is_admin,expires_at,created_at) VALUES(?,?,?,?,?)",
-        (phone, password_hash(password), int(admin), now + int(days)*86400, now))
+        (phone, password_hash(password), int(admin), None if admin else now + int(days)*86400, now))
     db.commit()
     return cursor.lastrowid
 
@@ -97,7 +97,7 @@ def login(db, phone, password):
     if not verify_password(password, member["password_hash"] if member else fallback):
         raise ValueError("Telefon veya şifre hatalı")
     now = int(time.time())
-    if member["blocked"] or (member["expires_at"] is not None and member["expires_at"] <= now):
+    if member["blocked"] or (not member["is_admin"] and member["expires_at"] is not None and member["expires_at"] <= now):
         raise PermissionError("Üyelik kapalı veya süresi dolmuş")
     token = secrets.token_urlsafe(32)
     db.execute("INSERT INTO sessions VALUES(?,?,?,?)",
@@ -115,7 +115,7 @@ def authenticate(db, token, *, count_analysis=False):
     row = db.execute("""SELECT m.*,s.last_seen AS session_seen,s.expires_at AS session_expiry
         FROM sessions s JOIN members m ON m.id=s.member_id WHERE s.token_hash=?""", (key,)).fetchone()
     if not row or row["blocked"] or row["session_expiry"] <= now or (
-        row["expires_at"] is not None and row["expires_at"] <= now
+        not row["is_admin"] and row["expires_at"] is not None and row["expires_at"] <= now
     ):
         raise PermissionError("Oturum geçersiz veya üyelik kapalı")
     elapsed = min(max(0, now-row["session_seen"]), 300)
@@ -136,6 +136,9 @@ def set_access(db, member_id, *, blocked=None, days=None):
         if blocked:
             db.execute("DELETE FROM sessions WHERE member_id=?", (member_id,))
     if days is not None:
+        is_admin = db.execute("SELECT is_admin FROM members WHERE id=?", (member_id,)).fetchone()["is_admin"]
+        if is_admin:
+            raise ValueError("Yönetici üyeliğine süre sınırı konulamaz")
         if not 1 <= int(days) <= 3650:
             raise ValueError("Gün sayısı 1-3650 arasında olmalı")
         db.execute("UPDATE members SET expires_at=? WHERE id=?",
