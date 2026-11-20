@@ -212,6 +212,10 @@ def matches(date):
         # Same opponents can play twice; retain separate matches if kickoffs differ by > 6h.
         try:
             kickoff = datetime.datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00"))
+            if kickoff.tzinfo is None:
+                kickoff = kickoff.replace(tzinfo=datetime.timezone.utc)
+            else:
+                kickoff = kickoff.astimezone(datetime.timezone.utc)
         except (ValueError, TypeError, AttributeError):
             kickoff = None
         found = None
