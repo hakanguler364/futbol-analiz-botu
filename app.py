@@ -122,7 +122,7 @@ def matches(date, league_filter=None):
         found = [m for day_matches in daily for m in day_matches]
         return list({m["id"]: m for m in found}.values())
     items = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=24) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
         for future in concurrent.futures.as_completed([pool.submit(get_league, league) for league in leagues]):
             try:
                 items.extend(future.result())
