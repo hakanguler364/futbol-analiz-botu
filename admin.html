@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="tr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Üyeler · Futbol Analiz</title>
+<style>
+:root{color-scheme:dark}body{margin:0;background:#101b2c;color:#f0f5ff;font:1rem system-ui}main{width:min(45rem,calc(100% - 2rem));margin:2rem auto}a{color:#b4e0ff}h1{font-size:1.55rem}ul{list-style:none;padding:0}li{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin:.6rem 0;padding:.8rem;background:#192b43;border:1px solid #42607c;border-radius:.6rem}button{font:inherit;padding:.5rem;border-radius:.4rem;cursor:pointer}
+</style>
+<main>
+<a href="/">Analiz merkezine dön</a>
+<h1>Üyeler</h1>
+<p id="message" role="status"></p>
+<ul id="members"></ul>
+</main>
+<script>
+const list = document.querySelector('#members');
+const message = document.querySelector('#message');
+
+async function request(path, options) {
+  const response = await fetch(path, options);
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error);
+  return result;
+}
+
+async function loadMembers() {
+  const {members} = await request('/auth/members');
+  list.replaceChildren();
+  for (const member of members) {
+    const row = document.createElement('li');
+    const label = document.createElement('span');
+    const expired = member.expires_at !== null && member.expires_at * 1000 <= Date.now();
+    const status = member.is_admin ? 'Yönetici' : member.blocked ? 'Kapalı' :
+      member.pending ? 'Onay bekliyor' : expired ? 'Süresi doldu' : 'Açık';
+    label.textContent = member.phone + ' · ' + status;
+    row.append(label);
+    if (!member.is_admin) {
+      const action = member.blocked || expired ? 'open' : member.pending ? 'approve' : 'block';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = {open: 'Aç', approve: 'Onayla', block: 'Engelle'}[action];
+      button.onclick = async () => {
+        button.disabled = true;
+        message.textContent = '';
+        try {
+          await request('/auth/access', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-Futbol-Request': '1'},
+            body: JSON.stringify({id: member.id, action})
+          });
+          await loadMembers();
+          message.textContent = 'Üye durumu güncellendi.';
+        } catch (error) {
+          message.textContent = error.message;
+          button.disabled = false;
+        }
+      };
+      row.append(button);
+    }
+    list.append(row);
+  }
+}
+
+loadMembers().catch(error => {message.textContent = error.message;});
+</script>
+</html>

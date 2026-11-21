@@ -179,6 +179,11 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 <body>
 <main>
 <h1>⚽ Dünya Ligleri – Analiz Merkezi</h1>
+<nav id="accountNav" hidden aria-label="Hesap">
+<a id="adminLink" href="/admin" hidden>Üyeleri yönet</a>
+<button type="button" onclick="signOut()">Çıkış yap</button>
+<span role="status" id="accountMessage"></span>
+</nav>
 <p class="muted" id="mode">Yükleniyor...</p>
 
 <div class="card">
@@ -245,6 +250,7 @@ showSelectedMatches();
 
 async function api(url,options){
 const r=await fetch(url,options);
+if(r.status===401){location.reload();throw Error('Oturum sona erdi.');}
 const contentType=r.headers.get('content-type')||'';
 if(!contentType.toLowerCase().includes('application/json')){
  throw Error('Sunucu API yerine sayfa döndürdü (HTTP '+r.status+'). Sunucu geçici olarak meşgul veya yeniden başlatılıyor. Biraz sonra tekrar deneyin.');
@@ -253,6 +259,13 @@ let j;
 try{j=await r.json();}catch(e){throw Error('Sunucudan geçerli JSON verisi alınamadı (HTTP '+r.status+').');}
 if(!r.ok)throw Error(j.error||'Sunucu hatası (HTTP '+r.status+')');
 return j;
+}
+
+async function signOut(){
+try{
+await api('/auth/logout',{method:'POST',headers:{'X-Futbol-Request':'1'}});
+location.replace('/');
+}catch(error){el('accountMessage').textContent=error.message;}
 }
 
 function update(){
@@ -615,7 +628,7 @@ if(!results[id])await analyze(id);
 if(results[id]?.error)throw Error('Hatalı analiz gönderilemez');
 await api('/api/telegram',{
 method:'POST',
-headers:{'Content-Type':'application/json'},
+headers:{'Content-Type':'application/json','X-Futbol-Request':'1'},
 body:JSON.stringify({match_id:id})
 });
 alert('Telegram mesajı gönderildi');

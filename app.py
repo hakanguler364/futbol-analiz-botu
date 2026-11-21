@@ -2,6 +2,8 @@
 """Football analysis dashboard. Python standard library only."""
 import os, json, urllib.request, urllib.parse, urllib.error, http.server, datetime, pathlib, re, time
 
+from access import AccessHandler, configure
+
 BASE = pathlib.Path(__file__).parent
 TOKEN = os.getenv("FOOTBALL_DATA_TOKEN", "").strip()
 TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -842,13 +844,25 @@ def telegram(message):
     ) as response:
         return json.load(response)
 
-class Handler(http.server.BaseHTTPRequestHandler):
-    def send(self, data, status=200):
+class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
+    def end_headers(self):
+        if self.membership_path:
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+        super().end_headers()
+
+    def send(self, data, status=200, *, cookie=None):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
         self.end_headers()
+        self.write_body(body)
+
+    def write_body(self, body):
         try:
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError):
@@ -857,20 +871,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        if self.membership_gate(path, "GET"):
+            return
         if path == "/":
-            try:
-                body = (BASE / "index.html").read_bytes()
-            except FileNotFoundError:
-                self.send({"error": "index.html bulunamadi"}, 404)
-                return
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            try:
-                self.wfile.write(body)
-            except (BrokenPipeError, ConnectionResetError):
-                pass
+            self.access_page("index.html")
             return
         try:
             if path == "/api/status":
@@ -938,6 +942,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send({"error": str(exc)}, 502)
 
     def do_POST(self):
+        if self.membership_gate(urllib.parse.urlparse(self.path).path, "POST"):
+            return
         try:
             if self.path != "/api/telegram":
                 self.send({"error": "Bulunamadi"}, 404)
@@ -970,6 +976,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
+    Handler.membership_path = configure()
+    host = "127.0.0.1" if os.environ.get("MEMBERSHIP_MODE") == "local" else "0.0.0.0"
     print("http://localhost:" + str(port), flush=True)
-    http.server.ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
+    http.server.ThreadingHTTPServer((host, port), Handler).serve_forever()
                         

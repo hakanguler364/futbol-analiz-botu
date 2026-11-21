@@ -1,6 +1,6 @@
 # Futbol Analiz Botu — ilk prototip
 
-Python 3.10+ gerekir; harici Python paketi gerekmez.
+Python 3.10+ gerekir. PostgreSQL kullanıldığında `pip install -r requirements.txt` çalıştırın.
 
 ## Başlatma
 
@@ -36,3 +36,29 @@ Telegram için BotFather üzerinden bot açın; botu hedef sohbetinize ekleyin v
 - Telegram gönderimi manuel tetiklenir. Otomatik bildirim, sunucuya kurulum ve sürekli çalışma henüz yapılmamıştır.
 - Testler için önce küçük lig örnekleriyle API kapsama alanı ve rate limit kontrol edilmelidir.
 - Bot yerel `127.0.0.1` üzerinde dinler; internetten erişilebilir bir web sitesi değildir.
+
+## Üyelik kilidi
+
+Varsayılan mod mevcut erişimi korur. Yerel deneme için `MEMBERSHIP_MODE=local` seçin.
+Bu mod yalnızca localhost'a bağlanır. İlk yönetici hesabı sunucu açılırken oluşturulur.
+
+| Ortam değişkeni | Değer |
+| --- | --- |
+| `MEMBERSHIP_MODE` | Yerelde `local`, HTTPS ile canlı ortamda `on` |
+| `MEMBERSHIP_DATABASE_URL` | Canlı PostgreSQL bağlantı adresi, gizli değişken |
+| `MEMBERSHIP_DB_PATH` | PostgreSQL adresi verilmediğinde  Yerelde geçici bir SQLite yolu, canlıda kalıcı diskin doğrudan altında mutlak SQLite dosya yolu |
+| `MEMBERSHIP_ADMIN_PHONE` | İlk yöneticinin telefon numarası |
+| `MEMBERSHIP_ADMIN_PASSWORD` | İlk yöneticinin en az 12 karakterlik şifresi |
+
+Yönetici bilgilerini barındırma ortamının gizli değişkenleri olarak ekleyin.
+Önceden oluşturulmuş yönetici hesabının şifresi ortam değişkeniyle değişmez.
+Canlı modda HTTPS ile PostgreSQL veya kalıcı SQLite depolaması kullanılır.
+Render Free için PostgreSQL kullanın ve Render derleme komutunda
+`pip install -r requirements.txt` çalıştırın. PostgreSQL bağlantısı sunucu
+sertifikasını ve alan adını doğrular.
+Render sağlık kontrolü için `/healthz` yolunu kullanın.
+
+Ziyaretçi giriş ekranından üyelik başvurusu yapar. Yönetici giriş yaptıktan
+sonra **Üyeleri yönet** ekranından başvuruyu onaylar, erişimi açar veya
+engeller. Engelleme mevcut oturumları da kapatır. Üyelik açıkken maç,
+analiz ve Telegram uçları geçerli oturum ister.
