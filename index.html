@@ -282,8 +282,9 @@ function matchResultScores(home,away,h2h){
  const venueEdge=hv.length>=3&&av.length>=3?clamp(.5+(wins(hv)-wins(av))*.5):.5;
  const venueH=h2h?.venue_last5?.count>=3?h2h.venue_last5:null;
  const h2hData=h2h?.count>=5?h2h:null;
- const h2hEdge=venueH?clamp((venueH.home_wins+.5*venueH.draws)/venueH.count):h2hData?clamp((h2hData.home_wins+.5*h2hData.draws)/h2hData.count):.5;
- const edge=clamp(.5+(homeEdge-.5)*.5+(formEdge-.5)*.2+(venueEdge-.5)*.15+(h2hEdge-.5)*.15);
+ const h2hEdge=h2hData?clamp((h2hData.home_wins+.5*h2hData.draws)/h2hData.count):.5;
+ const venueH2hEdge=venueH?clamp((venueH.home_wins+.5*venueH.draws)/venueH.count):.5;
+ const edge=clamp(.5+(homeEdge-.5)*.35+(formEdge-.5)*.15+(venueEdge-.5)*.15+(h2hEdge-.5)*.25+(venueH2hEdge-.5)*.1);
  const attackClose=clamp(1-Math.abs(ha-aa)/1.2),defenseClose=clamp(1-Math.abs(hc-ac)/1.2);
  const recentDraw=(draws(hr)+draws(ar))/2;
  const h2hDraw=h2hData?h2hData.draws/h2hData.count:null;
@@ -293,7 +294,7 @@ function matchResultScores(home,away,h2h){
  // Independent model points, not probabilities; high draw evidence reduces winner confidence.
  const draw=clamp(drawEvidence);
  const winnerScale=1-.55*draw;
- return {ms1:Math.round(100*edge*winnerScale),ms0:Math.round(100*draw),ms2:Math.round(100*(1-edge)*winnerScale),note:'Model puanı · olasılık değildir'};
+ return {ms1:Math.round(100*edge*winnerScale),ms0:Math.round(100*draw),ms2:Math.round(100*(1-edge)*winnerScale),note:(h2hData?'İkili rekabet: '+h2hData.home_wins+' ev galibiyeti · '+h2hData.draws+' beraberlik · '+h2hData.away_wins+' dep galibiyeti ('+h2hData.count+' maç). ':'İkili rekabet verisi sınırlı. ')+'Model puanı · olasılık değildir'};
 }
 function matchResultPanel(p){
  const entries=[['MS 1',p.ms1],['MS 0',p.ms0],['MS 2',p.ms2]];
@@ -453,8 +454,8 @@ const venueSummary=(s,venue)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>
 const avgPanel='<div class="panel"><h3>🏠 Kendi Sahası / Deplasman (Son 5)</h3>'+metric('<span class="team-name-home">'+esc(r.home)+'</span> (Ev)',venueSummary(a,'home'))+metric('<span class="team-name-away">'+esc(r.away)+'</span> (Dep)',venueSummary(b,'away'))+'</div>';
 const drawRate=h?.count?Math.round(100*h.draws/h.count):null;
 const drawAlert=h?.count>=5&&drawRate!==null&&drawRate>=50;
-const h2hNotice=h?.count>=10?'':('<div class="data-warning '+(h?.count<5?'red':'amber')+'">⚠️ '+(h?.count<5?'DİKKAT! YETERSİZ İKİLİ REKABET VERİSİ':'SINIRLI İKİLİ REKABET VERİSİ')+' <span>Bulunan: '+(h?.count||0)+' / 10 maç · Eksik karşılaşmalar olabilir</span></div>');
-const h2hPanel='<div class="panel"><h3>🤝 Kendi Aralarındaki Maçlar (Son 10)</h3>'+h2hNotice+(h?.count?'<div class="metric"><span class="team-name-home">'+esc(r.home)+': <b>'+h.home_wins+'</b></span><span>Beraberlik: <b>'+h.draws+'</b></span><span class="team-name-away">'+esc(r.away)+': <b>'+h.away_wins+'</b></span></div><div class="metric"><span>🤝 Beraberlik oranı</span><b>%'+drawRate+' ('+h.draws+'/'+h.count+')</b></div>'+(h.under25!==undefined?'<div class="metric"><span>⚽ 2,5 Alt</span><b>'+h.under25+'/'+h.count+' — %'+Math.round(100*h.under25/h.count)+'</b></div><div class="metric"><span>2,5 Üst</span><b>'+h.over25+'/'+h.count+'</b></div><div class="metric"><span>KG Var / Yok</span><b>'+h.kg_var+' / '+h.kg_yok+'</b></div>':'')+(drawAlert?'<div class="recommend">⚠️ Beraberlik eğilimi yüksek — dikkat!</div>':'')+(h.under25!==undefined&&h.count>=5&&h.under25/h.count>=0.8?'<div class="recommend">⚠️ 2,5 Alt eğilimi yüksek — geçmiş sonuçlara dayalı uyarı.</div>':'')+'<small>'+h.count+'/10 doğrulanmış geçmiş karşılaşma. Eksik maçlar tahmin edilmez. Geçmiş oranlar tahmin garantisi değildir.</small>':'<small>Doğrulanmış geçmiş eşleşme bulunamadı.</small>')+'</div>';
+const h2hNotice=h?.count>=5?'':('<div class="data-warning '+(h?.count<5?'red':'amber')+'">⚠️ '+(h?.count<5?'DİKKAT! YETERSİZ İKİLİ REKABET VERİSİ':'SINIRLI İKİLİ REKABET VERİSİ')+' <span>Bulunan: '+(h?.count||0)+' maç · Eksik karşılaşmalar olabilir</span></div>');
+const h2hPanel='<div class="panel"><h3>🤝 Kendi Aralarındaki Tüm Doğrulanmış Maçlar</h3>'+h2hNotice+(h?.count?'<div class="metric"><span class="team-name-home">'+esc(r.home)+': <b>'+h.home_wins+'</b></span><span>Beraberlik: <b>'+h.draws+'</b></span><span class="team-name-away">'+esc(r.away)+': <b>'+h.away_wins+'</b></span></div><div class="metric"><span>🤝 Beraberlik oranı</span><b>%'+drawRate+' ('+h.draws+'/'+h.count+')</b></div>'+(h.under25!==undefined?'<div class="metric"><span>⚽ 2,5 Alt</span><b>'+h.under25+'/'+h.count+' — %'+Math.round(100*h.under25/h.count)+'</b></div><div class="metric"><span>2,5 Üst</span><b>'+h.over25+'/'+h.count+'</b></div><div class="metric"><span>KG Var / Yok</span><b>'+h.kg_var+' / '+h.kg_yok+'</b></div>':'')+(drawAlert?'<div class="recommend">⚠️ Beraberlik eğilimi yüksek — dikkat!</div>':'')+(h.under25!==undefined&&h.count>=5&&h.under25/h.count>=0.8?'<div class="recommend">⚠️ 2,5 Alt eğilimi yüksek — geçmiş sonuçlara dayalı uyarı.</div>':'')+'<small>'+h.count+' doğrulanmış geçmiş karşılaşma. Eksik maçlar tahmin edilmez. Geçmiş oranlar tahmin garantisi değildir.</small>':'<small>Doğrulanmış geçmiş eşleşme bulunamadı.</small>')+'</div>';
 const venueH=h?.venue_last5;
 const venueHPanel='<div class="panel"><h3>🏟 Kendi Aralarında Ev Sahibinin Sahasında (Son 5)</h3>'+(venueH?.count<5?'<div class="data-warning '+(venueH?.count<3?'red':'amber')+'">⚠️ SINIRLI İÇ SAHA REKABET VERİSİ <span>Bulunan: '+(venueH?.count||0)+' / 5 maç</span></div>':'')+(venueH?.count?
 metric(esc(r.home)+' galibiyet',venueH.home_wins)+metric('Beraberlik',venueH.draws)+metric(esc(r.away)+' galibiyet',venueH.away_wins)+
@@ -496,7 +497,7 @@ renderedAnalyses[id]=state.innerHTML;const chip=el('prediction-'+id);if(chip){ch
 }
 const fmt=(label,s)=>!s?label+': Veri alınamadı':label+' — Son '+s.count+' maç\nToplam '+s.scored+' gol attı, '+s.conceded+' gol yedi\nİlk yarı '+s.first_half_scored+' attı, '+s.first_half_conceded+' yedi ('+s.first_half_count+' maç)\n'+s.games.map(g=>g.date+' | '+(g.venue==='home'?'Ev':'Deplasman')+' | '+g.opponent+' | '+g.scored+' attı, '+g.conceded+' yedi | İlk yarı '+(g.first_half_scored??'?')+'-'+(g.first_half_conceded??'?')).join('\n');
 const h=r.sections?.head_to_head_last10;
-const h2h=!h?'İkili rekabet: Veri alınamadı':('İkili rekabet — bulunan son '+h.count+' maç\n'+r.home+' galibiyet: '+h.home_wins+' | Beraberlik: '+h.draws+' | '+r.away+' galibiyet: '+h.away_wins+'\n'+h.games.map(g=>g.date+' | '+r.home+' '+g.home_goals+'-'+g.away_goals+' '+r.away).join('\n'));
+const h2h=!h?'İkili rekabet: Veri alınamadı':('İkili rekabet — bulunan '+h.count+' maç\n'+r.home+' galibiyet: '+h.home_wins+' | Beraberlik: '+h.draws+' | '+r.away+' galibiyet: '+h.away_wins+'\n'+h.games.map(g=>g.date+' | '+r.home+' '+g.home_goals+'-'+g.away_goals+' '+r.away).join('\n'));
 el('details').textContent=h2h+'\n\n'+fmt(r.home,r.sections?.home_last5)+'\n\n'+fmt(r.away,r.sections?.away_last5)+'\n\nDiğer analiz alanları henüz tamamlanmadı.';
 }catch(e){
 if(!results[id]){done++;bad++;}
