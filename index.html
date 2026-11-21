@@ -171,7 +171,7 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 @media(max-width:700px){.team-versus .match-team strong{font-size:clamp(14px,4vw,19px)!important}.analysis-grid>.panel:first-child .form-team-name{font-size:13px!important}}
 
 .data-warning{width:100%;box-sizing:border-box;margin:9px 0;padding:8px 10px;border-radius:7px;text-align:center;font-size:12px;font-weight:800;letter-spacing:.15px;border:1px solid;line-height:1.5}.data-warning span{font-weight:600;margin-left:6px}.data-warning.red{color:#ff858e;background:#5b1d2940;border-color:#e64b60}.data-warning.amber{color:#ffd06c;background:#68471940;border-color:#dba43c}.data-warning.green{color:#75e8a6;background:#1a5b3740;border-color:#347d58}
-</style>
+ .ms-score-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:9px 0}.ms-score-item{background:#0c2036;border:1px solid #31506a;border-radius:10px;text-align:center;padding:9px 3px;display:flex;flex-direction:column;gap:4px}.ms-score-item strong{font-size:23px}.ms-score-item small{font-size:10px}\n</style>
 </head>
 <body>
 <main>
@@ -195,7 +195,7 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 <button onclick="analyzeAll()">Analizleri yenile</button>
 <p id="progress" class="muted"></p>
 <div class="card"><label for="leagueFilter"><b>🏆 Lig seç</b></label><p><select id="leagueFilter" onchange="renderGames();analyzeAll()" style="background:#19263b;color:white;border:1px solid #526785;border-radius:9px;padding:12px;width:100%;max-width:450px"><option value="">Tüm ligler</option></select></p><p id="leagueSummary" class="muted"></p></div>
-<div class="card"><h3>🎯 Tahmin Filtreleri</h3><p><label>Filtre türü <select id="predictionType" onchange="renderGames()"><option value="all">Tüm maçlar</option><option value="over15">90 dk 1,5 Üst</option><option value="homeHalf">Ev ilk yarı gol atar</option><option value="awayHalf">Deplasman ilk yarı gol atar</option><option value="half05">İlk yarı 0,5 Üst</option><option value="half15">İlk yarı 1,5 Üst</option></select></label></p><p><label>Minimum puan <select id="predictionMin" onchange="renderGames()"><option value="60">%60</option><option value="70" selected>%70</option><option value="75">%75</option><option value="80">%80</option><option value="85">%85</option><option value="90">%90</option></select></label></p><p id="predictionSummary" class="muted"></p><button type="button" onclick="preparePredictions()">📋 Telegram mesajını hazırla</button><p><textarea id="predictionMessage" rows="9" readonly style="width:100%;box-sizing:border-box;background:#0c1425;color:white;padding:10px;border-radius:9px" placeholder="Tahminler burada hazırlanır."></textarea></p><button type="button" onclick="sharePredictionCards()">📤 Telegram’da görsel paylaş</button><button type="button" onclick="copyPredictions()">Mesajı kopyala</button><p class="muted">Telegram'a otomatik gönderim yapılmaz. Puanlar model tahminidir.</p></div>
+<div class="card"><h3>🎯 Tahmin Filtreleri</h3><p><label>Filtre türü <select id="predictionType" onchange="renderGames()"><option value="all">Tüm maçlar</option><option value="over15">90 dk 1,5 Üst</option><option value="homeHalf">Ev ilk yarı gol atar</option><option value="awayHalf">Deplasman ilk yarı gol atar</option><option value="half05">İlk yarı 0,5 Üst</option><option value="half15">İlk yarı 1,5 Üst</option><option value="ms1">MS 1</option><option value="ms0">MS 0</option><option value="ms2">MS 2</option></select></label></p><p><label>Minimum puan <select id="predictionMin" onchange="renderGames()"><option value="60">%60</option><option value="70" selected>%70</option><option value="75">%75</option><option value="80">%80</option><option value="85">%85</option><option value="90">%90</option></select></label></p><p id="predictionSummary" class="muted"></p><button type="button" onclick="preparePredictions()">📋 Telegram mesajını hazırla</button><p><textarea id="predictionMessage" rows="9" readonly style="width:100%;box-sizing:border-box;background:#0c1425;color:white;padding:10px;border-radius:9px" placeholder="Tahminler burada hazırlanır."></textarea></p><button type="button" onclick="sharePredictionCards()">📤 Telegram’da görsel paylaş</button><button type="button" onclick="copyPredictions()">Mesajı kopyala</button><p class="muted">Telegram'a otomatik gönderim yapılmaz. Puanlar model tahminidir.</p></div>
 <p class="muted">Maçlar Türkiye saatine göre erken başlayandan geç başlayana sıralanır.</p><section id="matches"></section>
 
 <h2>Analiz ayrıntıları</h2>
@@ -267,7 +267,39 @@ async function loadTeamInfo(m){
   node.innerHTML='<span>🏠 '+esc(m.homeTeam?.name)+': <b>'+rank(d.home_rank)+'</b> · Kadro değeri: <b>Veri bulunamadı</b></span><span>✈️ '+esc(m.awayTeam?.name)+': <b>'+rank(d.away_rank)+'</b> · Kadro değeri: <b>Veri bulunamadı</b></span>';
  }catch(e){if(node.isConnected)node.textContent='Lig sırası ve kadro değeri: Veri bulunamadı';}
 }
-const predictionLabels={over15:'90 dk 1,5 Üst',homeHalf:'Ev ilk yarı gol atar',awayHalf:'Deplasman ilk yarı gol atar',half05:'İlk yarı 0,5 Üst',half15:'İlk yarı 1,5 Üst'};
+const predictionLabels={over15:'90 dk 1,5 Üst',homeHalf:'Ev ilk yarı gol atar',awayHalf:'Deplasman ilk yarı gol atar',half05:'İlk yarı 0,5 Üst',half15:'İlk yarı 1,5 Üst',ms1:'MS 1',ms0:'MS 0',ms2:'MS 2'};
+
+function matchResultScores(home,away,h2h){
+ const hg=home?.games||[],ag=away?.games||[];
+ const validGoals=x=>x&&Number.isFinite(x.count)&&x.count>=5&&Number.isFinite(x.scored)&&Number.isFinite(x.conceded);
+ if(!validGoals(home)||!validGoals(away)||hg.length<3||ag.length<3)return {ms1:null,ms0:null,ms2:null,note:'Yeterli doğrulanmış maç verisi yok'};
+ const ha=home.scored/home.count,hc=home.conceded/home.count,aa=away.scored/away.count,ac=away.conceded/away.count;
+ const clamp=x=>Math.max(0,Math.min(1,x));
+ const recent=x=>x.slice(0,5),wins=x=>x.filter(g=>g.scored>g.conceded).length/x.length,draws=x=>x.filter(g=>g.scored===g.conceded).length/x.length;
+ const hr=recent(hg),ar=recent(ag),hv=hg.filter(g=>g.venue==='home').slice(0,5),av=ag.filter(g=>g.venue==='away').slice(0,5);
+ const homeEdge=clamp(.5+(ha-aa)*.23+(ac-hc)*.23);
+ const formEdge=clamp(.5+(wins(hr)-wins(ar))*.5);
+ const venueEdge=hv.length>=3&&av.length>=3?clamp(.5+(wins(hv)-wins(av))*.5):.5;
+ const venueH=h2h?.venue_last5?.count>=3?h2h.venue_last5:null;
+ const h2h=h2h?.count>=5?h2h:null;
+ const h2hEdge=venueH?clamp((venueH.home_wins+.5*venueH.draws)/venueH.count):h2h?clamp((h2h.home_wins+.5*h2h.draws)/h2h.count):.5;
+ const edge=clamp(.5+(homeEdge-.5)*.5+(formEdge-.5)*.2+(venueEdge-.5)*.15+(h2hEdge-.5)*.15);
+ const attackClose=clamp(1-Math.abs(ha-aa)/1.2),defenseClose=clamp(1-Math.abs(hc-ac)/1.2);
+ const recentDraw=(draws(hr)+draws(ar))/2;
+ const h2hDraw=h2h?h2h.draws/h2h.count:null;
+ const venueDraw=hv.length>=3&&av.length>=3?(draws(hv)+draws(av))/2:null;
+ const weighted=[[attackClose,25],[defenseClose,20],[recentDraw,25],[h2hDraw,20],[venueDraw,10]].filter(([v])=>v!==null);
+ const drawEvidence=weighted.reduce((t,[v,w])=>t+v*w,0)/weighted.reduce((t,[v,w])=>t+w,0);
+ // Independent model points, not probabilities; high draw evidence reduces winner confidence.
+ const draw=clamp(drawEvidence);
+ const winnerScale=1-.55*draw;
+ return {ms1:Math.round(100*edge*winnerScale),ms0:Math.round(100*draw),ms2:Math.round(100*(1-edge)*winnerScale),note:'Model puanı · olasılık değildir'};
+}
+function matchResultPanel(p){
+ const entries=[['MS 1',p.ms1],['MS 0',p.ms0],['MS 2',p.ms2]];
+ return '<div class="panel full"><h3>🏆 Maç Sonucu (90 Dakika)</h3><div class="ms-score-grid">'+entries.map(([label,v])=>'<div class="ms-score-item"><b>'+label+'</b><strong style="color:'+(v===null?'#aebcd2':predictionColor(v))+'">'+(v===null?'—':v)+'</strong><small>'+(v===null?'Veri yok':'puan')+'</small></div>').join('')+'</div><small>'+esc(p.note)+'</small></div>';
+}
+
 function predictionColor(p){return p>=80?'#34e981':p>=70?'#ffcf56':'#ff7889';}
 function predictionMatches(){const league=el('leagueFilter').value,type=el('predictionType').value,min=Number(el('predictionMin').value);return games.filter(m=>(!league||(m.competition?.name||'Bilinmeyen lig')===league)&&(type==='all'||(Number.isFinite(predictionScores[m.id]?.[type])&&predictionScores[m.id][type]>=min))).sort((a,b)=>new Date(a.utcDate||0)-new Date(b.utcDate||0));}
 function preparePredictions(){const type=el('predictionType').value,min=Number(el('predictionMin').value);const selected=predictionMatches().filter(m=>type==='all'||Number.isFinite(predictionScores[m.id]?.[type]));el('predictionMessage').value='⚽ FUTBOL ANALİZ TAHMİNLERİ\n📅 '+el('matchDate').value+'\n🎯 '+(predictionLabels[type]||'Tüm maçlar')+' · '+(type==='all'?'Tümü':'%'+min+' ve üzeri')+'\n\n'+(selected.length?selected.map((m,i)=>(i+1)+'. '+m.homeTeam?.name+' - '+m.awayTeam?.name+'\n🏆 '+trLeague(m.competition?.name)+' | 🕒 '+kickoffTR(m.utcDate)+'\n'+(type==='all'?'📊 Analiz detayları sitede':('📊 '+predictionLabels[type]+': %'+Math.round(predictionScores[m.id][type])))).join('\n\n'):'Bu filtreye uygun analiz edilmiş maç bulunamadı.')+'\n\n⚠️ Model puanları garanti değildir.';}
@@ -441,6 +473,8 @@ const awayDefenseRisk=awayHalfAttack!==null&&homeHalfDefense!==null&&awayHalfAtt
 const defenseRiskCount=Number(homeDefenseRisk)+Number(awayDefenseRisk);
 const halfScore=poissonOver(lambda,0),adjustedHalfScore=halfScore===null?null:Math.max(0,halfScore-15*defenseRiskCount),generalScore=poissonOver(fullLambda,1);
 predictionScores[id]={over15:generalScore,homeHalf:pct(a,'home','first_half_scored'),awayHalf:pct(b,'away','first_half_scored'),half05:adjustedHalfScore,half15:poissonOver(lambda,1)};
+const msResult=matchResultScores(a,b,h);
+predictionScores[id].ms1=msResult.ms1;predictionScores[id].ms0=msResult.ms0;predictionScores[id].ms2=msResult.ms2;
 const halfPanel='<div class="inner"><h3>⏱ İlk Yarı Gol Seçenekleri</h3>'+bar('İY 0,5 Üst',adjustedHalfScore)+bar('İY 1,5 Üst',poissonOver(lambda,1))+bar('İY 2,5 Üst',poissonOver(lambda,2))+'<small>'+esc(halfMethod||'Yeterli veri yok')+' · Model puanı</small></div>';
 const riskReasons=[];
 if(homeDefenseRisk)riskReasons.push('⚠️ Dikkat: Rakip savunması güçlü — ev sahibinin ilk yarı gol atma oranı %'+homeHalfAttack+', deplasmanın gol yeme oranı %'+awayHalfDefense+'. İY 0,5 Üst puanı 15 düşürüldü.');
@@ -455,7 +489,7 @@ const riskPanel='<div class="panel risk-panel"><h3>⚠️ RİSK UYARISI</h3>'+ri
 const recommended=[['1,5 Üst',generalScore],['2,5 Alt',fullLambda===null?null:100-poissonOver(fullLambda,2)],['İY 0,5 Üst',adjustedHalfScore],['İY 1,5 Üst',poissonOver(lambda,1)]].filter(x=>x[1]!==null).sort((x,y)=>y[1]-x[1]);
 const safest=recommended.find(x=>!riskFlag||x[0]!=='İY 0,5 Üst')||recommended[0];
 const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3>'+(safest?'<div class="metric"><span>✅ Daha Güvenli Seçenek</span><b class="score-green">'+safest[0]+' ('+Math.round(safest[1])+' puan)</b></div>':'<p>Öneri için yeterli veri yok</p>')+(halfScore!==null?'<div class="metric"><span>⚠️ Alternatif '+(riskFlag?'(Riskli)':'')+'</span><b class="score-yellow">İY 0,5 Üst ('+Math.round(adjustedHalfScore)+' puan)</b></div>':'')+'<small>Model puanları kesinlik veya garanti değildir.</small></div>';
-state.innerHTML='<div class="analysis-grid">'+teamPanel+goalsPanel+avgPanel+h2hPanel+venueHPanel+halfMini+comparePanel+riskPanel+'<div class="panel third">'+general+'</div><div class="panel third">'+halfPanel+'</div><div class="panel third">'+other+'</div>'+systemPanel+'</div>';
+state.innerHTML='<div class="analysis-grid">'+teamPanel+goalsPanel+avgPanel+h2hPanel+venueHPanel+halfMini+comparePanel+riskPanel+'<div class="panel third">'+general+'</div><div class="panel third">'+halfPanel+'</div><div class="panel third">'+other+'</div>'+matchResultPanel(msResult)+systemPanel+'</div>';
 renderedAnalyses[id]=state.innerHTML;const chip=el('prediction-'+id);if(chip){chip.innerHTML=Object.entries(predictionScores[id]).map(([k,v])=>'<span style="display:inline-block;margin:3px;padding:6px 9px;border-radius:9px;border:1px solid '+(Number.isFinite(v)?predictionColor(v):'#526785')+';color:'+(Number.isFinite(v)?predictionColor(v):'#aebcd2')+'">'+predictionLabels[k]+': '+(Number.isFinite(v)?'%'+Math.round(v):'Veri yok')+'</span>').join('');}if(el('predictionType').value!=='all')renderGames();
 
 
