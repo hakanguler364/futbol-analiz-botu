@@ -1,13 +1,10 @@
 """Phone/password membership primitives (standard library, server-side only).
 
-Not activated until the application routes are wired and persistent storage is configured.
 Render free instances have ephemeral local storage: do NOT use a local SQLite file for
 production memberships without a persistent disk or external database.
 """
-import datetime
 import hashlib
 import hmac
-import os
 import re
 import secrets
 import sqlite3
@@ -19,14 +16,16 @@ SESSION_SECONDS = 12 * 3600
 
 def normalize_phone(phone):
     value = re.sub(r"[\s()\-]", "", str(phone))
+    if re.fullmatch(r"(?:\+90|0090|90|0)?5[0-9]{9}", value):
+        value = "+90" + value[-10:]
     if not re.fullmatch(r"\+?[0-9]{10,15}", value):
         raise ValueError("Geçerli telefon numarası girin")
     return value
 
 
 def password_hash(password, salt=None):
-    if not isinstance(password, str) or len(password) < 12:
-        raise ValueError("Şifre en az 12 karakter olmalı")
+    if not isinstance(password, str) or not 12 <= len(password) <= 256:
+        raise ValueError("Şifre 12–256 karakter olmalı")
     salt = salt or secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, ITERATIONS)
     return f"pbkdf2_sha256${ITERATIONS}${salt.hex()}${digest.hex()}"
@@ -73,30 +72,55 @@ def initialize(db):
         last_seen INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS sessions_member ON sessions(member_id);
+    CREATE TABLE IF NOT EXISTS auth_attempts (attempted_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS auth_attempts_time ON auth_attempts(attempted_at);
+    CREATE TABLE IF NOT EXISTS pending_members (
+        member_id INTEGER PRIMARY KEY REFERENCES members(id) ON DELETE CASCADE
+    );
     """)
     db.commit()
 
 
-def create_member(db, phone, password, *, admin=False, days=30):
+def create_member(db, phone, password, *, admin=False, days=None, pending=False):
     phone = normalize_phone(phone)
-    if not 1 <= int(days) <= 3650:
+    if days is not None and not 1 <= int(days) <= 3650:
         raise ValueError("Gün sayısı 1-3650 arasında olmalı")
     now = int(time.time())
     cursor = db.execute(
         "INSERT INTO members(phone,password_hash,is_admin,expires_at,created_at) VALUES(?,?,?,?,?)",
-        (phone, password_hash(password), int(admin), None if admin else now + int(days)*86400, now))
+        (phone, password_hash(password), int(admin), None if admin or days is None else now + int(days)*86400, now))
+    if pending:
+        db.execute("INSERT INTO pending_members VALUES (?)", (cursor.lastrowid,))
     db.commit()
     return cursor.lastrowid
+
+
+def limit_attempts(db):
+    now = int(time.time())
+    db.execute("BEGIN IMMEDIATE")
+    db.execute("DELETE FROM auth_attempts WHERE attempted_at <= ?", (now - 60,))
+    count = db.execute("SELECT COUNT(*) FROM auth_attempts").fetchone()[0]
+    if count >= 30:
+        db.commit()
+        raise OverflowError("Çok fazla deneme. Bir dakika sonra tekrar deneyin.")
+    db.execute("INSERT INTO auth_attempts VALUES (?)", (now,))
+    db.commit()
 
 
 def login(db, phone, password):
     phone = normalize_phone(phone)
     member = db.execute("SELECT * FROM members WHERE phone=?", (phone,)).fetchone()
     # Equalize nonexistent-account work; do not reveal which phone numbers exist.
-    fallback = password_hash("dummy-password-for-timing-only")
-    if not verify_password(password, member["password_hash"] if member else fallback):
+    fallback = f"pbkdf2_sha256${ITERATIONS}${'00' * 16}${'00' * 32}"
+    password_valid = isinstance(password, str) and len(password) <= 256 and verify_password(
+        password, member["password_hash"] if member else fallback
+    )
+    if not password_valid or member is None:
         raise ValueError("Telefon veya şifre hatalı")
     now = int(time.time())
+    if db.execute("SELECT 1 FROM pending_members WHERE member_id=?", (member["id"],)).fetchone():
+        raise PermissionError("Hesabınız yönetici onayı bekliyor")
+    db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
     if member["blocked"] or (not member["is_admin"] and member["expires_at"] is not None and member["expires_at"] <= now):
         raise PermissionError("Üyelik kapalı veya süresi dolmuş")
     token = secrets.token_urlsafe(32)
@@ -146,7 +170,19 @@ def set_access(db, member_id, *, blocked=None, days=None):
     db.commit()
 
 
+def logout(db, token):
+    if token:
+        db.execute("DELETE FROM sessions WHERE token_hash=?", (hashlib.sha256(token.encode()).hexdigest(),))
+        db.commit()
+
+
+def approve(db, member_id):
+    db.execute("DELETE FROM pending_members WHERE member_id=?", (member_id,))
+    db.commit()
+
+
 def members(db):
     return [dict(row) for row in db.execute("""SELECT id,phone,is_admin,blocked,
-        expires_at,created_at,last_seen,login_count,analysis_count,active_seconds
+        expires_at,created_at,last_seen,login_count,analysis_count,active_seconds,
+        EXISTS(SELECT 1 FROM pending_members WHERE member_id=members.id) AS pending
         FROM members ORDER BY id""")]

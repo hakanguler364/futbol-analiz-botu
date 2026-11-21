@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="tr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giriş · Futbol Analiz</title>
+<style>
+:root{color-scheme:dark}body{margin:0;background:#101b2c;color:#f0f5ff;font:1rem system-ui;display:grid;place-items:center;min-height:100vh}main{width:min(25rem,calc(100% - 4rem));padding:1.5rem;background:#192b43;border:1px solid #42607c;border-radius:1rem}h1{margin-top:0;font-size:1.55rem}label,input{display:block;width:100%;box-sizing:border-box}input,button{font:inherit;padding:.65rem;margin:.35rem 0 .8rem;border:1px solid #7792ab;border-radius:.45rem}button{cursor:pointer}button[type=submit]{background:#b4e0ff;color:#081627}#message{min-height:1.5em;margin-bottom:0}
+</style>
+<main>
+<h1>Futbol Analiz</h1>
+<form id="access-form">
+  <label for="phone">Telefon numarası</label>
+  <input id="phone" type="tel" autocomplete="username" required maxlength="25">
+  <label for="password">Şifre</label>
+  <input id="password" type="password" autocomplete="current-password" required maxlength="256">
+  <button type="submit" id="submit">Giriş yap</button>
+  <button type="button" id="switch-mode">Hesap aç</button>
+</form>
+<p id="message" role="status"></p>
+</main>
+<script>
+const form = document.querySelector('#access-form');
+const message = document.querySelector('#message');
+const submit = document.querySelector('#submit');
+const toggle = document.querySelector('#switch-mode');
+const phone = document.querySelector('#phone');
+const password = document.querySelector('#password');
+let registering = false;
+toggle.onclick = () => {
+  registering = !registering;
+  submit.textContent = registering ? 'Onay iste' : 'Giriş yap';
+  toggle.textContent = registering ? 'Girişe dön' : 'Hesap aç';
+  password.autocomplete = registering ? 'new-password' : 'current-password';
+  password.minLength = registering ? 12 : 0;
+  password.value = '';
+  message.textContent = registering ? 'Şifre en az 12 karakter olmalı.' : '';
+};
+form.onsubmit = async (event) => {
+  event.preventDefault();
+  submit.disabled = toggle.disabled = true;
+  message.textContent = '';
+  try {
+    const response = await fetch(registering ? '/auth/register' : '/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Futbol-Request': '1'},
+      body: JSON.stringify({phone: phone.value, password: password.value})
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    if (registering) {
+      toggle.onclick();
+      message.textContent = result.message;
+    } else {
+      location.reload();
+    }
+  } catch (error) {
+    message.textContent = error.message;
+  } finally {
+    submit.disabled = toggle.disabled = false;
+  }
+};
+</script>
+</html>
