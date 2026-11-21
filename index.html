@@ -513,7 +513,8 @@ games=(d.matches||[]).sort((a,b)=>new Date(a.utcDate||0)-new Date(b.utcDate||0))
 el('mode').textContent='Maç verileri — '+date;
 renderGames();
 if(!games.length){el('matches').textContent=league?'Bu ligde bugün maç bulunamadı veya veri kaynağından veri alınamadı.':'Bu tarihte maç bulunamadı.';return;}
-await analyzeAll();
+el('progress').textContent=games.length+' maç listelendi; ayrıntılı analizler arka planda hazırlanıyor.';
+setTimeout(()=>{if(current===runId)analyzeAll().catch(err=>{el('progress').textContent='Analiz hatası: '+err.message;});},0);
 }catch(e){if(current===runId)el('matches').textContent='Veri bulunamadı: '+e.message;}
 }
 
