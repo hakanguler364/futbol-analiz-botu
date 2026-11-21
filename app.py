@@ -592,7 +592,6 @@ def espn_head_to_head(match):
             continue
     games.sort(key=lambda g: g["date"], reverse=True)
     venue_games = [g for g in games if g["at_home"]][:5]
-    games = games[:10]
     return {"venue_last5": {"count": len(venue_games), "home_wins": sum(g["winner"] == "home" for g in venue_games), "away_wins": sum(g["winner"] == "away" for g in venue_games), "draws": sum(g["winner"] == "draw" for g in venue_games), "under25": sum(g["home_goals"] + g["away_goals"] <= 2 for g in venue_games), "over25": sum(g["home_goals"] + g["away_goals"] > 2 for g in venue_games), "kg_var": sum(g["home_goals"] > 0 and g["away_goals"] > 0 for g in venue_games), "kg_yok": sum(g["home_goals"] == 0 or g["away_goals"] == 0 for g in venue_games)}, "count": len(games), "home_wins": sum(g["winner"] == "home" for g in games),
             "away_wins": sum(g["winner"] == "away" for g in games),
             "draws": sum(g["winner"] == "draw" for g in games), "games": games, "kg_var": sum(g["home_goals"] > 0 and g["away_goals"] > 0 for g in games), "kg_yok": sum(g["home_goals"] == 0 or g["away_goals"] == 0 for g in games), "over25": sum(g["home_goals"] + g["away_goals"] > 2 for g in games), "under25": sum(g["home_goals"] + g["away_goals"] <= 2 for g in games)}
@@ -650,7 +649,6 @@ def sportsdb_head_to_head(match):
     games = list({(g["date"], g["home_goals"], g["away_goals"]): g for g in games}.values())
     games.sort(key=lambda g: g["date"], reverse=True)
     venue_games = [g for g in games if g["at_home"]][:5]
-    games = games[:10]
     return {"venue_last5": {"count": len(venue_games), "home_wins": sum(g["winner"] == "home" for g in venue_games), "away_wins": sum(g["winner"] == "away" for g in venue_games), "draws": sum(g["winner"] == "draw" for g in venue_games), "under25": sum(g["home_goals"] + g["away_goals"] <= 2 for g in venue_games), "over25": sum(g["home_goals"] + g["away_goals"] > 2 for g in venue_games), "kg_var": sum(g["home_goals"] > 0 and g["away_goals"] > 0 for g in venue_games), "kg_yok": sum(g["home_goals"] == 0 or g["away_goals"] == 0 for g in venue_games)}, "count": len(games), "home_wins": sum(g["winner"] == "home" for g in games),
             "away_wins": sum(g["winner"] == "away" for g in games),
             "draws": sum(g["winner"] == "draw" for g in games), "games": games,
