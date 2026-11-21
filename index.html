@@ -313,11 +313,13 @@ function matchResultScores(home,away,h2h){
 function matchResultPanel(p){
  const entries=[['MS 1',p.ms1],['MS 0',p.ms0],['MS 2',p.ms2]];
  const scoreCards=entries.map(([label,v])=>'<div class="ms-score-item"><b>'+label+'</b><strong style="color:'+(v===null?'#aebcd2':predictionColor(v))+'">'+(v===null?'—':v)+'</strong><small>'+(v===null?'Veri yok':'puan')+'</small></div>').join('');
+ const drawRisk=p.ms1!==null&&p.ms0!==null&&Math.abs(p.ms1-p.ms0)<5;
+ const drawWarning=drawRisk?'<p style="color:#ffcf56;font-weight:700">⚠️ Beraberlik riski yüksek — MS 1 ile MS 0 arasında 5 puandan az fark var.</p>':'';
  const info=p.breakdown||{};
  const fmt=x=>Number.isFinite(x)?x.toFixed(2):'Veri yok';
  const general='<div class="inner"><h4>📊 Genel Performans</h4><small>Ev sahibi: attığı '+fmt(info.homeScored)+' / yediği '+fmt(info.homeConceded)+' gol/maç</small><p><small>Deplasman: attığı '+fmt(info.awayScored)+' / yediği '+fmt(info.awayConceded)+' gol/maç</small></p></div>';
  const venue='<div class="inner"><h4>🏟️ İç Saha / Deplasman Performansı</h4><small>Ev sahibi iç saha ('+(info.homeVenueCount||0)+' maç): attığı '+fmt(info.homeVenueScored)+' / yediği '+fmt(info.homeVenueConceded)+' gol/maç</small><p><small>Deplasman dış saha ('+(info.awayVenueCount||0)+' maç): attığı '+fmt(info.awayVenueScored)+' / yediği '+fmt(info.awayVenueConceded)+' gol/maç</small></p><small>'+(info.venueGoalsReady?'Gol karşılaştırmasında iç/dış saha %65, genel %35 ağırlıklı.':'İç/dış saha verisi yetersiz: gol karşılaştırmasında genel ortalama kullanılıyor.')+'</small></div>';
- return '<div class="panel full"><h3>🏆 Maç Sonucu (90 Dakika)</h3><div class="ms-score-grid">'+scoreCards+'</div>'+general+venue+'<small>'+esc(p.note)+'</small></div>';
+ return '<div class="panel full"><h3>🏆 Maç Sonucu (90 Dakika)</h3><div class="ms-score-grid">'+scoreCards+'</div>'+drawWarning+general+venue+'<small>'+esc(p.note)+'</small></div>';
 }
 
 function predictionColor(p){return p>=80?'#34e981':p>=70?'#ffcf56':'#ff7889';}
