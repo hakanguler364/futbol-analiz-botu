@@ -278,7 +278,17 @@ function matchResultScores(home,away,h2h){
  const clamp=x=>Math.max(0,Math.min(1,x));
  const recent=x=>x.slice(0,5),wins=x=>x.filter(g=>g.scored>g.conceded).length/x.length,draws=x=>x.filter(g=>g.scored===g.conceded).length/x.length;
  const hr=recent(hg),ar=recent(ag),hv=hg.filter(g=>g.venue==='home').slice(0,5),av=ag.filter(g=>g.venue==='away').slice(0,5);
- const homeEdge=clamp(.5+(ha-aa)*.23+(ac-hc)*.23);
+ const venueStats=games=>({count:games.length,scored:games.reduce((n,g)=>n+Number(g.scored),0),conceded:games.reduce((n,g)=>n+Number(g.conceded),0)});
+ const homeVenue=venueStats(hg.filter(g=>g.venue==='home'&&Number.isFinite(g.scored)&&Number.isFinite(g.conceded)));
+ const awayVenue=venueStats(ag.filter(g=>g.venue==='away'&&Number.isFinite(g.scored)&&Number.isFinite(g.conceded)));
+ const venueGoalsReady=homeVenue.count>=3&&awayVenue.count>=3;
+ const vhAttack=venueGoalsReady?homeVenue.scored/homeVenue.count:ha;
+ const vhConcede=venueGoalsReady?homeVenue.conceded/homeVenue.count:hc;
+ const vaAttack=venueGoalsReady?awayVenue.scored/awayVenue.count:aa;
+ const vaConcede=venueGoalsReady?awayVenue.conceded/awayVenue.count:ac;
+ const generalGoalEdge=clamp(.5+(ha-aa)*.23+(ac-hc)*.23);
+ const venueGoalEdge=clamp(.5+(vhAttack-vaAttack)*.23+(vaConcede-vhConcede)*.23);
+ const homeEdge=venueGoalsReady? .35*generalGoalEdge+.65*venueGoalEdge:generalGoalEdge;
  const formEdge=clamp(.5+(wins(hr)-wins(ar))*.5);
  const venueEdge=hv.length>=3&&av.length>=3?clamp(.5+(wins(hv)-wins(av))*.5):.5;
  const venueH=h2h?.venue_last5?.count>=3?h2h.venue_last5:null;
@@ -288,7 +298,7 @@ function matchResultScores(home,away,h2h){
  const recentH2h=h2h?.games?.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).slice(0,5)||[];
  const recentH2hEdge=recentH2h.length>=3?clamp((recentH2h.filter(g=>g.winner==='home').length+.5*recentH2h.filter(g=>g.winner==='draw').length)/recentH2h.length):.5;
  const edge=clamp(.5+(homeEdge-.5)*.35+(formEdge-.5)*.15+(venueEdge-.5)*.15+(h2hEdge-.5)*.15+(venueH2hEdge-.5)*.1+(recentH2hEdge-.5)*.1);
- const attackClose=clamp(1-Math.abs(ha-aa)/1.2),defenseClose=clamp(1-Math.abs(hc-ac)/1.2);
+ const attackClose=clamp(1-Math.abs(vhAttack-vaAttack)/1.2),defenseClose=clamp(1-Math.abs(vhConcede-vaConcede)/1.2);
  const recentDraw=(draws(hr)+draws(ar))/2;
  const h2hDraw=h2hData?h2hData.draws/h2hData.count:null;
  const venueDraw=hv.length>=3&&av.length>=3?(draws(hv)+draws(av))/2:null;
@@ -297,7 +307,7 @@ function matchResultScores(home,away,h2h){
  // Independent model points, not probabilities; high draw evidence reduces winner confidence.
  const draw=clamp(drawEvidence);
  const winnerScale=1-.55*draw;
- return {ms1:Math.round(100*edge*winnerScale),ms0:Math.round(100*draw),ms2:Math.round(100*(1-edge)*winnerScale),note:(h2hData?'İkili rekabet: '+h2hData.home_wins+' ev galibiyeti · '+h2hData.draws+' beraberlik · '+h2hData.away_wins+' dep galibiyeti ('+h2hData.count+' maç). ':'İkili rekabet verisi sınırlı. ')+'Model puanı · olasılık değildir'};
+ return {ms1:Math.round(100*edge*winnerScale),ms0:Math.round(100*draw),ms2:Math.round(100*(1-edge)*winnerScale),note:(h2hData?'İkili rekabet: '+h2hData.home_wins+' ev galibiyeti · '+h2hData.draws+' beraberlik · '+h2hData.away_wins+' dep galibiyeti ('+h2hData.count+' maç). ':'İkili rekabet verisi sınırlı. ')+(venueGoalsReady?'İç/dış saha gol verisi ağırlığı %65. ':'İç/dış saha gol verisi yetersiz; genel ortalamalar kullanıldı. ')+'Model puanı · olasılık değildir'};
 }
 function matchResultPanel(p){
  const entries=[['MS 1',p.ms1],['MS 0',p.ms0],['MS 2',p.ms2]];
