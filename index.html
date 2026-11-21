@@ -507,7 +507,11 @@ if(!date){alert('Önce tarih seçin');return;}
 const current=++runId;done=ok=bad=0;results={};renderedAnalyses={};predictionScores={};games=[];update();
 el('matches').textContent='Seçilen ligin maçları yükleniyor...';
 try{
-const d=await api('/api/matches?date='+encodeURIComponent(date)+(league?'&league='+encodeURIComponent(league):''));
+const controller=new AbortController();
+const timeout=setTimeout(()=>controller.abort(),12000);
+let d;
+try{d=await api('/api/matches?date='+encodeURIComponent(date)+(league?'&league='+encodeURIComponent(league):''),{signal:controller.signal});}
+finally{clearTimeout(timeout);}
 if(current!==runId)return;
 games=(d.matches||[]).sort((a,b)=>new Date(a.utcDate||0)-new Date(b.utcDate||0));update();
 el('mode').textContent='Maç verileri — '+date;
@@ -515,7 +519,7 @@ renderGames();
 if(!games.length){el('matches').textContent=league?'Bu ligde bugün maç bulunamadı veya veri kaynağından veri alınamadı.':'Bu tarihte maç bulunamadı.';return;}
 el('progress').textContent=games.length+' maç listelendi; ayrıntılı analizler arka planda hazırlanıyor.';
 setTimeout(()=>{if(current===runId)analyzeAll().catch(err=>{el('progress').textContent='Analiz hatası: '+err.message;});},0);
-}catch(e){if(current===runId)el('matches').textContent='Veri bulunamadı: '+e.message;}
+}catch(e){if(current===runId)el('matches').textContent=e.name==='AbortError'?'Maç verisi 12 saniyede alınamadı. Sunucu yavaş yanıt veriyor; yeniden deneyin.':'Veri bulunamadı: '+e.message;}
 }
 
 async function analyzeAll(){
