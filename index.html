@@ -516,7 +516,7 @@ const current=++runId;done=ok=bad=0;results={};renderedAnalyses={};predictionSco
 el('matches').textContent='Seçilen ligin maçları yükleniyor...';
 try{
 const controller=new AbortController();
-const timeout=setTimeout(()=>controller.abort(),12000);
+const timeout=setTimeout(()=>controller.abort(),45000);
 let d;
 try{d=await api('/api/matches?date='+encodeURIComponent(date)+(league?'&league='+encodeURIComponent(league):''),{signal:controller.signal});}
 finally{clearTimeout(timeout);}
@@ -527,7 +527,7 @@ renderGames();
 if(!games.length){el('matches').textContent=league?'Bu ligde bugün maç bulunamadı veya veri kaynağından veri alınamadı.':'Bu tarihte maç bulunamadı.';return;}
 el('progress').textContent=games.length+' maç listelendi; ayrıntılı analizler arka planda hazırlanıyor.';
 setTimeout(()=>{if(current===runId)analyzeAll().catch(err=>{el('progress').textContent='Analiz hatası: '+err.message;});},0);
-}catch(e){if(current===runId)el('matches').textContent=e.name==='AbortError'?'Maç verisi 12 saniyede alınamadı. Sunucu yavaş yanıt veriyor; yeniden deneyin.':'Veri bulunamadı: '+e.message;}
+}catch(e){if(current===runId)el('matches').textContent=e.name==='AbortError'?'Maç verisi 45 saniyede alınamadı. Sunucu veya veri sağlayıcısı yanıt vermiyor; yeniden deneyin.':'Veri bulunamadı: '+e.message;}
 }
 
 async function analyzeAll(){
