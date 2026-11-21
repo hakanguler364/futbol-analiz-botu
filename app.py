@@ -75,13 +75,18 @@ def valid_date(value):
     return value
 
 
-def matches(date):
+ESPN_LEAGUES = ["eng.1","eng.2","eng.3","eng.4","eng.fa","eng.league_cup","esp.1","esp.2","esp.copa_del_rey","ger.1","ger.2","ger.dfb_pokal","ita.1","ita.2","ita.coppa_italia","fra.1","fra.2","fra.coupe_de_france","tur.1","tur.2","tur.cup","ned.1","ned.2","ned.cup","por.1","por.2","por.taca.portugal","bel.1","bel.2","sco.1","sco.2","sco.3","sco.4","sco.fa","irl.1","nir.1","wal.1","aut.1","sui.1","den.1","nor.1","swe.1","fin.1","pol.1","cze.1","gre.1","rou.1","rus.1","ukr.1","cro.1","srb.1","hun.1","usa.1","usa.open","mex.1","mex.2","bra.1","bra.2","bra.copa","arg.1","arg.2","col.1","chi.1","uru.1","par.1","per.1","ecu.1","ven.1","bol.1","crc.1","hon.1","gua.1","slv.1","ksa.1","uae.1","qat.1","ind.1","jpn.1","jpn.2","kor.1","chn.1","aus.1","aus.2","idn.1","tha.1","mys.1","sgp.1","uefa.champions","uefa.europa","uefa.europa.conf","uefa.nations","uefa.euro","uefa.euro.qualifying","fifa.world","fifa.worldq.uefa","fifa.worldq.conmebol","fifa.worldq.concacaf","fifa.worldq.afc","fifa.worldq.caf","fifa.friendly","concacaf.champions","conmebol.libertadores","conmebol.sudamericana","afc.champions","caf.champions","fifa.club.world_cup"]
+
+def matches(date, league_filter=None):
+    if league_filter and league_filter not in ESPN_LEAGUES:
+        raise ValueError('Gecersiz lig secimi')
     date = valid_date(date)
-    cached = MATCH_CACHE.get(date)
+    cache_key = date + ':' + (league_filter or 'all')
+    cached = MATCH_CACHE.get(cache_key)
     if cached and time.time() - cached["time"] < 300:
         return cached["matches"], False
     import concurrent.futures, hashlib
-    leagues = ["eng.1","eng.2","eng.3","eng.4","eng.fa","eng.league_cup","esp.1","esp.2","esp.copa_del_rey","ger.1","ger.2","ger.dfb_pokal","ita.1","ita.2","ita.coppa_italia","fra.1","fra.2","fra.coupe_de_france","tur.1","tur.2","tur.cup","ned.1","ned.2","ned.cup","por.1","por.2","por.taca.portugal","bel.1","bel.2","sco.1","sco.2","sco.3","sco.4","sco.fa","irl.1","nir.1","wal.1","aut.1","sui.1","den.1","nor.1","swe.1","fin.1","pol.1","cze.1","gre.1","rou.1","rus.1","ukr.1","cro.1","srb.1","hun.1","usa.1","usa.open","mex.1","mex.2","bra.1","bra.2","bra.copa","arg.1","arg.2","col.1","chi.1","uru.1","par.1","per.1","ecu.1","ven.1","bol.1","crc.1","hon.1","gua.1","slv.1","ksa.1","uae.1","qat.1","ind.1","jpn.1","jpn.2","kor.1","chn.1","aus.1","aus.2","idn.1","tha.1","mys.1","sgp.1","uefa.champions","uefa.europa","uefa.europa.conf","uefa.nations","uefa.euro","uefa.euro.qualifying","fifa.world","fifa.worldq.uefa","fifa.worldq.conmebol","fifa.worldq.concacaf","fifa.worldq.afc","fifa.worldq.caf","fifa.friendly","concacaf.champions","conmebol.libertadores","conmebol.sudamericana","afc.champions","caf.champions","fifa.club.world_cup"]
+    leagues = ESPN_LEAGUES if not league_filter else [league_filter]
     def get_league(league):
         # Turkey (UTC+3) calendar day overlaps two UTC calendar dates.
         utc_days = [date.replace("-", ""), (datetime.date.fromisoformat(date) - datetime.timedelta(days=1)).strftime("%Y%m%d")]
@@ -134,7 +139,7 @@ def matches(date):
             out.append({"id": -uid, "utcDate": kickoff, "competition": {"name": event.get("strLeague") or "Other"}, "homeTeam": {"name": home, "id": None, "crest": event.get("strHomeTeamBadge")}, "awayTeam": {"name": away, "id": None, "crest": event.get("strAwayTeamBadge")}, "source": "TheSportsDB", "sportsdb_event_id": event.get("idEvent")})
         return out
     try:
-        extra_events = sportsdb()
+        extra_events = sportsdb() if not league_filter else []
         existing = {(m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold()) for m in items}
         for m in extra_events:
             pair = (m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold())
@@ -143,7 +148,7 @@ def matches(date):
                 existing.add(pair)
     except Exception as exc:
         print("SPORTSDB_FIXTURE_ERROR " + str(exc)[:180], flush=True)
-    if TOKEN:
+    if TOKEN and not league_filter:
         try:
             extra = fetch("/matches?" + urllib.parse.urlencode({"dateFrom": date, "dateTo": date})).get("matches", [])
             existing = {(m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold()) for m in items}
@@ -155,7 +160,7 @@ def matches(date):
             pass
     # Confirmed Egyptian Second Division A fixtures, 19 November 2026 (12:30 UTC).
     # Fixture-only fallback: do not invent team histories or first-half scores.
-    if date == "2026-11-19":
+    if date == "2026-11-19" and not league_filter:
         egypt_fixtures = [
             ("Baladiyat El Mahalla", "Haras El Hodood"),
             ("El Dakhleya", "Ismaily"),
@@ -176,7 +181,7 @@ def matches(date):
                     "source": "Verified fixture fallback", "fixture_verified": True})
                 existing.add(pair)
     # Verified TFF fixture fallback for 20 November 2026.
-    if date == "2026-11-20":
+    if date == "2026-11-20" and not league_filter:
         if not any("ğdır" in m.get("homeTeam", {}).get("name", "").casefold() and "mraniye" in m.get("awayTeam", {}).get("name", "").casefold() for m in items):
             items.append({"id": -202611202000, "utcDate": "2026-11-20T17:00:00Z",
                 "competition": {"name": "Türkiye 1. Lig"},
@@ -247,7 +252,7 @@ def matches(date):
     by_league = dict(Counter(m.get("competition", {}).get("name", "?") for m in items))
     print("FIXTURE_AUDIT " + json.dumps({"date": date, "total": len(items), "sources": by_source, "leagues": by_league}, ensure_ascii=False), flush=True)
     MATCH_CACHE.setdefault("by_id", {}).update({m["id"]: m for m in items})
-    MATCH_CACHE[date] = {"matches": items, "time": time.time()}
+    MATCH_CACHE[cache_key] = {"matches": items, "time": time.time()}
     return items, False
 
 def season_start(date_text, league=None):
@@ -801,12 +806,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send({"home_rank": ranks["home"], "away_rank": ranks["away"],
                            "home_value": None, "away_value": None, "source": ranks["source"]})
                 return
+            if path == "/api/leagues":
+                self.send({"leagues": ESPN_LEAGUES})
+                return
             if path == "/api/matches":
                 date = urllib.parse.parse_qs(parsed.query).get(
                     "date", [datetime.datetime.now(
                         datetime.timezone.utc).date().isoformat()]
                 )[0]
-                items, demo = matches(date)
+                league_filter = urllib.parse.parse_qs(parsed.query).get('league', [None])[0]
+                items, demo = matches(date, league_filter)
                 self.send({"matches": [dict(m, id=str(m["id"])) for m in items], "demo": demo, "date": date,
                            "count": len(items),
                            "message": ("Bu tarih icin API mac dondurmedi. "
