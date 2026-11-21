@@ -62,18 +62,13 @@ button{font-size:12px;padding:8px 10px;margin:3px}
 .analysis-grid>.panel.full{grid-column:span 6}
 .analysis-grid .panel{min-width:0}
 .analysis-grid .panel h3{font-size:clamp(11px,2.5vw,15px)}
-.analysis-grid .risk-panel{border-color:#d85b73;background:linear-gradient(135deg,#44182b,#1d1024)}
-.analysis-grid .risk-panel h3{background:#582035;color:#ff929b;font-size:17px}
 .analysis-grid .system-panel{border-color:#19b67b;background:linear-gradient(130deg,#083c33,#091b31)}
 .analysis-grid .system-panel h3{color:#75f5a6}
-.analysis-grid .risk-line{padding:6px 0;font-size:12px}
-.analysis-grid .risk-line b{color:#ffd966}
 .analysis-grid .recommend{border:1px solid #d8b43b;border-radius:8px;padding:9px;margin-top:8px;color:#ffe99b}
 .analysis-grid .compact-table{width:100%;border-collapse:collapse;font-size:11px}
 .analysis-grid .compact-table td,.analysis-grid .compact-table th{padding:4px 2px;border-bottom:1px solid #28506c;text-align:left}
 .analysis-grid .form-chip{min-width:16px;padding:3px;margin:1px}
 .analysis-grid .small-note{font-size:11px;color:#9cb4cb}
-@media(max-width:700px){.analysis-grid{gap:6px}.analysis-grid>.panel{grid-column:span 3}.analysis-grid>.panel.third{grid-column:span 2}.analysis-grid>.panel.full{grid-column:span 6}.analysis-grid .metric{font-size:10px}.analysis-grid .metric b{font-size:11px}.analysis-grid .panel h3{font-size:10px}.analysis-grid .risk-line{font-size:11px}}
 
 /* Son 5 maç kutusu: daha küçük ve dengeli yazılar */
 .analysis-grid>.panel:first-child{font-size:11px}
@@ -488,14 +483,6 @@ predictionScores[id]={over15:generalScore,homeHalf:pct(a,'home','first_half_scor
 const msResult=matchResultScores(a,b,h);
 predictionScores[id].ms1=msResult.ms1;predictionScores[id].ms0=msResult.ms0;predictionScores[id].ms2=msResult.ms2;
 const halfPanel='<div class="inner"><h3>⏱ İlk Yarı Gol Seçenekleri</h3>'+bar('İY 0,5 Üst',adjustedHalfScore)+bar('İY 1,5 Üst',poissonOver(lambda,1))+bar('İY 2,5 Üst',poissonOver(lambda,2))+'<small>'+esc(halfMethod||'Yeterli veri yok')+' · Model puanı</small></div>';
-const riskReasons=[];
-if(homeDefenseRisk)riskReasons.push('⚠️ Dikkat: Rakip savunması güçlü — ev sahibinin ilk yarı gol atma oranı %'+homeHalfAttack+', deplasmanın gol yeme oranı %'+awayHalfDefense+'. İY 0,5 Üst puanı 15 düşürüldü.');
-if(awayDefenseRisk)riskReasons.push('⚠️ Dikkat: Rakip savunması güçlü — deplasmanın ilk yarı gol atma oranı %'+awayHalfAttack+', ev sahibinin gol yeme oranı %'+homeHalfDefense+'. İY 0,5 Üst puanı 15 düşürüldü.');
-if(homeAttack!==null&&homeAttack<1)riskReasons.push('❌ Ev sahibinin gol atma ortalaması düşük ('+fmtAvg(homeAttack)+'/maç)');
-if(awayConcede!==null&&awayConcede>=1.25)riskReasons.push('✅ Deplasmanın gol yeme ortalaması yüksek ('+fmtAvg(awayConcede)+'/maç)');
-if(awayConcede!==null&&awayConcede<1)riskReasons.push('⚠️ Deplasmanın gol yeme ortalaması düşük ('+fmtAvg(awayConcede)+'/maç)');
-if(lambda===null)riskReasons.push('⚠️ İlk yarı için doğrulanmış veri yetersiz; puan gösterilmiyor');
-if(!riskReasons.length)riskReasons.push('ℹ️ Belirgin risk işareti yok; model tahminidir');
 const riskFlag=(homeAttack!==null&&homeAttack<1)||(awayConcede!==null&&awayConcede<1)||lambda===null||defenseRiskCount>0;
 const recommended=[['1,5 Üst',generalScore],['2,5 Alt',fullLambda===null?null:100-poissonOver(fullLambda,2)],['İY 0,5 Üst',adjustedHalfScore],['İY 1,5 Üst',poissonOver(lambda,1)]].filter(x=>x[1]!==null).sort((x,y)=>y[1]-x[1]);
 const safest=recommended.find(x=>!riskFlag||x[0]!=='İY 0,5 Üst')||recommended[0];
