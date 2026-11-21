@@ -578,6 +578,39 @@ alert('Telegram mesajı gönderildi');
 }catch(e){alert(e.message);}
 }
 
+
+// Lig seçiminde yalnızca görünen adlar Türkçeleştirilir; API kodları değişmez.
+const leagueCountries={eng:'İngiltere',esp:'İspanya',ger:'Almanya',ita:'İtalya',fra:'Fransa',tur:'Türkiye',ned:'Hollanda',por:'Portekiz',bel:'Belçika',sco:'İskoçya',irl:'İrlanda',nir:'Kuzey İrlanda',wal:'Galler',aut:'Avusturya',sui:'İsviçre',den:'Danimarka',nor:'Norveç',swe:'İsveç',fin:'Finlandiya',pol:'Polonya',cze:'Çekya',gre:'Yunanistan',rou:'Romanya',rus:'Rusya',ukr:'Ukrayna',cro:'Hırvatistan',srb:'Sırbistan',hun:'Macaristan',usa:'ABD',mex:'Meksika',bra:'Brezilya',arg:'Arjantin',col:'Kolombiya',chi:'Şili',uru:'Uruguay',par:'Paraguay',per:'Peru',ecu:'Ekvador',ven:'Venezuela',bol:'Bolivya',crc:'Kosta Rika',hon:'Honduras',gua:'Guatemala',slv:'El Salvador',ksa:'Suudi Arabistan',uae:'Birleşik Arap Emirlikleri',qat:'Katar',ind:'Hindistan',jpn:'Japonya',kor:'Güney Kore',chn:'Çin',aus:'Avustralya',idn:'Endonezya',tha:'Tayland',mys:'Malezya',sgp:'Singapur'};
+const leagueNames={
+'eng.1':'İngiltere Premier Lig','eng.2':'İngiltere Championship','eng.3':'İngiltere 1. Lig','eng.4':'İngiltere 2. Lig','eng.fa':'İngiltere Federasyon Kupası','eng.league_cup':'İngiltere Lig Kupası',
+'esp.1':'İspanya La Liga','esp.2':'İspanya 2. Lig','esp.copa_del_rey':'İspanya Kral Kupası',
+'ger.1':'Almanya Bundesliga','ger.2':'Almanya 2. Bundesliga','ger.dfb_pokal':'Almanya Kupası',
+'ita.1':'İtalya Serie A','ita.2':'İtalya Serie B','ita.coppa_italia':'İtalya Kupası',
+'fra.1':'Fransa Ligue 1','fra.2':'Fransa Ligue 2','fra.coupe_de_france':'Fransa Kupası',
+'tur.1':'Türkiye Süper Lig','tur.2':'Türkiye 1. Lig','tur.cup':'Türkiye Kupası',
+'ned.1':'Hollanda Eredivisie','ned.2':'Hollanda 2. Lig','ned.cup':'Hollanda Kupası',
+'por.1':'Portekiz Primeira Liga','por.2':'Portekiz 2. Lig','por.taca.portugal':'Portekiz Kupası',
+'bel.1':'Belçika Pro Lig','bel.2':'Belçika 2. Lig','sco.fa':'İskoçya Kupası',
+'usa.1':'ABD MLS','usa.open':'ABD Açık Kupası','mex.1':'Meksika Liga MX','mex.2':'Meksika 2. Lig',
+'bra.1':'Brezilya Serie A','bra.2':'Brezilya Serie B','bra.copa':'Brezilya Kupası',
+'arg.1':'Arjantin 1. Lig','arg.2':'Arjantin 2. Lig',
+'jpn.1':'Japonya J1 Ligi','jpn.2':'Japonya J2 Ligi','kor.1':'Güney Kore K1 Ligi','aus.1':'Avustralya A-Lig','aus.2':'Avustralya 2. Lig',
+'uefa.champions':'UEFA Şampiyonlar Ligi','uefa.europa':'UEFA Avrupa Ligi','uefa.europa.conf':'UEFA Konferans Ligi','uefa.nations':'UEFA Uluslar Ligi','uefa.euro':'Avrupa Futbol Şampiyonası','uefa.euro.qualifying':'Avrupa Şampiyonası Elemeleri',
+'fifa.world':'FIFA Dünya Kupası','fifa.worldq.uefa':'Dünya Kupası Avrupa Elemeleri','fifa.worldq.conmebol':'Dünya Kupası Güney Amerika Elemeleri','fifa.worldq.concacaf':'Dünya Kupası Kuzey ve Orta Amerika Elemeleri','fifa.worldq.afc':'Dünya Kupası Asya Elemeleri','fifa.worldq.caf':'Dünya Kupası Afrika Elemeleri','fifa.friendly':'Millî Takım Hazırlık Maçları',
+'concacaf.champions':'CONCACAF Şampiyonlar Kupası','conmebol.libertadores':'Güney Amerika Libertadores Kupası','conmebol.sudamericana':'Güney Amerika Sudamericana Kupası','afc.champions':'Asya Şampiyonlar Ligi','caf.champions':'Afrika Şampiyonlar Ligi','fifa.club.world_cup':'FIFA Kulüpler Dünya Kupası'
+};
+function translateLeagueOptions(){
+ const picker=document.getElementById('leagueFilter');
+ if(!picker)return;
+ for(const option of picker.options){
+  const code=option.value;
+  if(!code)continue;
+  const parts=code.split('.');
+  option.textContent=leagueNames[code]||(leagueCountries[parts[0]]?(leagueCountries[parts[0]]+' '+( /^\\d+$/.test(parts[1])?(parts[1]+'. Lig'):'Kupa / Turnuva')):code);
+ }
+}
+translateLeagueOptions();
+
 el('matchDate').value=localDate();
 today();
 </script>
