@@ -90,31 +90,36 @@ def matches(date, league_filter=None):
     def get_league(league):
         # Turkey (UTC+3) calendar day overlaps two UTC calendar dates.
         utc_days = [date.replace("-", ""), (datetime.date.fromisoformat(date) - datetime.timedelta(days=1)).strftime("%Y%m%d")]
-        found = []
-        for utc_day in utc_days:
-            url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + utc_day + "&limit=500"
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+        def fetch_day(utc_day):
+            found = []
+        url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + utc_day + "&limit=500"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=8) as response:
+                data = json.load(response)
+        except Exception as exc:
+            print("FIXTURE_PROVIDER_ERROR " + json.dumps({"league": league, "day": utc_day, "error": str(exc)[:180]}), flush=True)
+            continue
+        for event in data.get("events", []):
+            kickoff = event.get("date", "")
             try:
-                with urllib.request.urlopen(req, timeout=8) as response:
-                    data = json.load(response)
-            except Exception as exc:
-                print("FIXTURE_PROVIDER_ERROR " + json.dumps({"league": league, "day": utc_day, "error": str(exc)[:180]}), flush=True)
+                turkey_day = (datetime.datetime.fromisoformat(kickoff.replace("Z", "+00:00")) + datetime.timedelta(hours=3)).date().isoformat()
+            except ValueError:
                 continue
-            for event in data.get("events", []):
-                kickoff = event.get("date", "")
-                try:
-                    turkey_day = (datetime.datetime.fromisoformat(kickoff.replace("Z", "+00:00")) + datetime.timedelta(hours=3)).date().isoformat()
-                except ValueError:
-                    continue
-                if turkey_day != date:
-                    continue
-                teams = (event.get("competitions") or [{}])[0].get("competitors", [])
-                home = next((t for t in teams if t.get("homeAway") == "home"), None)
-                away = next((t for t in teams if t.get("homeAway") == "away"), None)
-                if not home or not away:
-                    continue
-                uid = int.from_bytes(hashlib.sha256((league+str(event.get("id"))).encode()).digest()[:7], "big")
-                found.append({"id": -uid, "utcDate": kickoff, "competition": {"name": (data.get("leagues") or [{}])[0].get("name", league)}, "homeTeam": {"name": home.get("team", {}).get("displayName", "?"), "id": None, "crest": ((home.get("team", {}).get("logos") or [{}])[0].get("href"))}, "awayTeam": {"name": away.get("team", {}).get("displayName", "?"), "id": None, "crest": ((away.get("team", {}).get("logos") or [{}])[0].get("href"))}, "source": "ESPN", "espn_league": league, "espn_event_id": event.get("id"), "home_espn_id": home.get("team", {}).get("id"), "away_espn_id": away.get("team", {}).get("id")})
+            if turkey_day != date:
+                continue
+            teams = (event.get("competitions") or [{}])[0].get("competitors", [])
+            home = next((t for t in teams if t.get("homeAway") == "home"), None)
+            away = next((t for t in teams if t.get("homeAway") == "away"), None)
+            if not home or not away:
+                continue
+            uid = int.from_bytes(hashlib.sha256((league+str(event.get("id"))).encode()).digest()[:7], "big")
+            found.append({"id": -uid, "utcDate": kickoff, "competition": {"name": (data.get("leagues") or [{}])[0].get("name", league)}, "homeTeam": {"name": home.get("team", {}).get("displayName", "?"), "id": None, "crest": ((home.get("team", {}).get("logos") or [{}])[0].get("href"))}, "awayTeam": {"name": away.get("team", {}).get("displayName", "?"), "id": None, "crest": ((away.get("team", {}).get("logos") or [{}])[0].get("href"))}, "source": "ESPN", "espn_league": league, "espn_event_id": event.get("id"), "home_espn_id": home.get("team", {}).get("id"), "away_espn_id": away.get("team", {}).get("id")})
+
+            return found
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as day_pool:
+            daily = list(day_pool.map(fetch_day, utc_days))
+        found = [m for day_matches in daily for m in day_matches]
         return list({m["id"]: m for m in found}.values())
     items = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=24) as pool:
