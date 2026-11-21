@@ -322,7 +322,7 @@ function matchResultPanel(p){
  return '<div class="panel full"><h3>🏆 Maç Sonucu (90 Dakika)</h3><div class="ms-score-grid">'+scoreCards+'</div>'+drawWarning+general+venue+'<small>'+esc(p.note)+'</small></div>';
 }
 
-function predictionColor(p){return p>=80?'#34e981':p>=70?'#ffcf56':'#ff7889';}
+function predictionColor(p){return p>=80?'#34e981':'#ff7889';}
 function matchTimeAllowed(m){const from=el('timeFrom').value,to=el('timeTo').value;if(!from&&!to)return true;const time=kickoffTR(m.utcDate);if(time==='Saat bilinmiyor')return false;const mins=v=>{const x=v.split(':').map(Number);return x[0]*60+x[1]};const t=mins(time),f=from?mins(from):0,e=to?mins(to):1439;return from&&to&&f>e?(t>=f||t<=e):t>=f&&t<=e;}
 function selectedMatches(){const league=el('leagueFilter').value;return games.filter(m=>(!league||m.espn_league===league)&&matchTimeAllowed(m));}
 function predictionMatches(){const league=el('leagueFilter').value,type=el('predictionType').value,min=Number(el('predictionMin').value);return selectedMatches().filter(m=>(type==='all'||(Number.isFinite(predictionScores[m.id]?.[type])&&predictionScores[m.id][type]>=min))).sort((a,b)=>new Date(a.utcDate||0)-new Date(b.utcDate||0));}
