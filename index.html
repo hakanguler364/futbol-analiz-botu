@@ -239,8 +239,13 @@ showSelectedMatches();
 
 async function api(url,options){
 const r=await fetch(url,options);
-const j=await r.json();
-if(!r.ok)throw Error(j.error||'Sunucu hatası');
+const contentType=r.headers.get('content-type')||'';
+if(!contentType.toLowerCase().includes('application/json')){
+ throw Error('Sunucu API yerine sayfa döndürdü (HTTP '+r.status+'). Sunucu geçici olarak meşgul veya yeniden başlatılıyor. Biraz sonra tekrar deneyin.');
+}
+let j;
+try{j=await r.json();}catch(e){throw Error('Sunucudan geçerli JSON verisi alınamadı (HTTP '+r.status+').');}
+if(!r.ok)throw Error(j.error||'Sunucu hatası (HTTP '+r.status+')');
 return j;
 }
 
