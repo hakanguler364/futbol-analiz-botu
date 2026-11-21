@@ -1,7 +1,6 @@
 """HTTP integration for the optional membership gate."""
 import json
 import os
-import sqlite3
 import time
 from contextlib import closing
 from http.cookies import SimpleCookie, CookieError
@@ -21,14 +20,21 @@ def configure():
         raise RuntimeError("MEMBERSHIP_MODE must be off, on or local")
     if mode == "local" and os.environ.get("RENDER"):
         raise RuntimeError("Local membership mode is restricted to localhost")
-    db_path = Path(os.environ["MEMBERSHIP_DB_PATH"])
-    if mode == "on" and (not db_path.is_absolute() or not db_path.parent.is_mount()):
-        raise RuntimeError("Place MEMBERSHIP_DB_PATH directly under a persistent disk mount")
+    database_url = os.environ.get("MEMBERSHIP_DATABASE_URL")
+    if database_url:
+        if not database_url.startswith(("postgresql://", "postgres://")):
+            raise RuntimeError("MEMBERSHIP_DATABASE_URL must be a PostgreSQL URI")
+        db_path = database_url
+    else:
+        db_path = Path(os.environ["MEMBERSHIP_DB_PATH"])
+        if mode == "on" and (not db_path.is_absolute() or not db_path.parent.is_mount()):
+            raise RuntimeError("Place MEMBERSHIP_DB_PATH directly under a persistent disk mount")
     with closing(membership.connect(db_path)) as db, db:
         membership.initialize(db)
         if not db.execute("SELECT 1 FROM members WHERE is_admin=1 AND blocked=0").fetchone():
-            membership.create_member(db, os.environ["MEMBERSHIP_ADMIN_PHONE"],
-                                     os.environ["MEMBERSHIP_ADMIN_PASSWORD"], admin=True)
+            if membership.create_member(db, os.environ["MEMBERSHIP_ADMIN_PHONE"],
+                                        os.environ["MEMBERSHIP_ADMIN_PASSWORD"], admin=True) is None:
+                raise RuntimeError("Administrator phone already belongs to an account")
     return db_path
 
 
@@ -102,10 +108,7 @@ class AccessHandler:
                     return
                 membership.limit_attempts(db)
                 if path == "/auth/register":
-                    try:
-                        membership.create_member(db, data.get("phone"), data.get("password"), pending=True)
-                    except sqlite3.IntegrityError:
-                        pass
+                    membership.create_member(db, data.get("phone"), data.get("password"), pending=True)
                     self.send({"message": "Yeni hesaplar yönetici onayından sonra açılır."}, 202)
                     return
                 token = membership.login(db, data.get("phone"), data.get("password"))
