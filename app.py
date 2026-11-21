@@ -556,21 +556,26 @@ def espn_head_to_head(match):
     # seasons to recover verified head-to-head matches at both venues.
     events = []
     seen_event_ids = set()
-    for year in range(kickoff.year, kickoff.year - 11, -1):
-        season_url = url + "&season=" + str(year)
-        try:
-            req = urllib.request.Request(season_url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=7) as response:
-                data = json.load(response)
-            for event in data.get("events") or []:
-                event_id = event.get("id")
-                if event_id and event_id in seen_event_ids:
-                    continue
-                if event_id:
-                    seen_event_ids.add(event_id)
-                events.append(event)
-        except (OSError, ValueError, TypeError):
-            continue
+    # Search BOTH clubs: historical ESPN coverage may differ by team.
+    for query_team_id in (home_id, away_id):
+        team_url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/" +
+                    urllib.parse.quote(str(league), safe="") + "/teams/" +
+                    urllib.parse.quote(str(query_team_id), safe="") + "/schedule?limit=300")
+        for year in range(kickoff.year, kickoff.year - 21, -1):
+            season_url = team_url + "&season=" + str(year)
+            try:
+                req = urllib.request.Request(season_url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+                with urllib.request.urlopen(req, timeout=7) as response:
+                    data = json.load(response)
+                for event in data.get("events") or []:
+                    event_id = event.get("id")
+                    if event_id and event_id in seen_event_ids:
+                        continue
+                    if event_id:
+                        seen_event_ids.add(event_id)
+                    events.append(event)
+            except (OSError, ValueError, TypeError):
+                continue
     games = []
     for event in events:
         try:
