@@ -25,6 +25,72 @@ def fetch(path):
     except urllib.error.URLError as exc:
         raise ValueError(f"Football-Data baglanti hatasi: {exc.reason}") from exc
 
+
+# BSD free football consensus odds. Never expose the API token to the browser.
+BSD_TOKEN = os.getenv("BZZOIRO_API_KEY", "").strip()
+BSD_CACHE = {}
+def bsd_json(path):
+    req = urllib.request.Request("https://sports.bzzoiro.com/api/v2/" + path,
+        headers={"Authorization": "Token " + BSD_TOKEN, "Accept": "application/json", "User-Agent": "FutbolAnaliz/1.0"})
+    with urllib.request.urlopen(req, timeout=12) as response:
+        return json.load(response)
+
+def bsd_name(value):
+    import unicodedata
+    value = unicodedata.normalize("NFKD", str(value or "").casefold())
+    value = "".join(c for c in value if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]", "", value)
+
+def bsd_odds(match):
+    if not BSD_TOKEN:
+        return {"source": "BSD: API anahtarı tanımlı değil", "odds": {}}
+    key = str(match["id"])
+    cached = BSD_CACHE.get(key)
+    if cached and time.time() - cached[0] < 900:
+        return cached[1]
+    home = match.get("homeTeam", {}).get("name", "")
+    away = match.get("awayTeam", {}).get("name", "")
+    kickoff = str(match.get("utcDate") or "")
+    day = kickoff[:10]
+    result = {"source": "BSD: eşleşen oran bulunamadı", "odds": {}}
+    try:
+        # Match both teams and kickoff: a similar team name alone is never sufficient.
+        query = urllib.parse.urlencode({"team_name": home, "date_from": day, "date_to": day, "limit": 100})
+        data = bsd_json("events/?" + query)
+        events = data.get("results", []) if isinstance(data, dict) else []
+        for event in events:
+            eh = event.get("home_team") or event.get("home") or ""
+            ea = event.get("away_team") or event.get("away") or ""
+            if isinstance(eh, dict): eh = eh.get("name", "")
+            if isinstance(ea, dict): ea = ea.get("name", "")
+            event_time = str(event.get("start_time") or event.get("start_at") or event.get("date") or event.get("event_date") or event.get("kickoff") or "")
+            if bsd_name(home) != bsd_name(eh) or bsd_name(away) != bsd_name(ea):
+                continue
+            if not event_time:
+                continue
+            try:
+                t1 = datetime.datetime.fromisoformat(kickoff.replace("Z", "+00:00"))
+                t2 = datetime.datetime.fromisoformat(event_time.replace("Z", "+00:00"))
+                if abs((t1-t2).total_seconds()) > 7200: continue
+            except (ValueError, TypeError): continue
+            event_id = event.get("id") or event.get("event_id")
+            if not event_id: continue
+            raw = bsd_json("events/" + urllib.parse.quote(str(event_id), safe="") + "/odds/")
+            values = raw.get("odds") or {}
+            prices = {}
+            for label, field in (("MS 1", "home_win"), ("MS 0", "draw"), ("MS 2", "away_win")):
+                v = values.get(field)
+                if isinstance(v, (float, int)) and not isinstance(v, bool) and v > 1:
+                    prices[label] = float(v)
+            result = {"source": "BSD ücretsiz konsensüs oranları", "odds": prices,
+                      "updated_at": raw.get("last_update_at")}
+            break
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError, TypeError, KeyError) as exc:
+        print("BSD_ODDS_ERROR " + str(exc)[:160], flush=True)
+        result = {"source": "BSD: oran bağlantısı kullanılamıyor", "odds": {}}
+    BSD_CACHE[key] = (time.time(), result)
+    return result
+
 STANDINGS_CACHE = {}
 
 def team_standings(match):
@@ -813,6 +879,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     "telegram_configured": bool(TG_TOKEN and TG_CHAT),
                     "analyzed": len(CACHE)
                 })
+                return
+            if path.startswith("/api/odds/"):
+                mid = int(path.rsplit("/", 1)[1])
+                match = MATCH_CACHE.get("by_id", {}).get(mid)
+                if not match:
+                    self.send({"source": "Maç bulunamadı", "odds": {}}, 404)
+                    return
+                self.send(bsd_odds(match))
                 return
             if path.startswith("/api/team-info/"):
                 mid = int(path.rsplit("/", 1)[1])
