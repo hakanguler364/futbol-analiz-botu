@@ -401,7 +401,7 @@ function bettingOddsPanel(m){
  const colors=['#22c55e','#eab308','#ef4444'];
  const valid=(v)=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
  const odds=data?.odds||{};
- const tiles=outcomes.map((name,i)=>'<div class="odds-tile"><small>'+name+'</small><strong>'+(valid(odds[name])&&odds[name]>1?odds[name].toFixed(2):'—')+'</strong><div style="height:4px;background:'+colors[i]+';border-radius:6px;margin-top:8px"></div></div>').join('');
+ const tiles=outcomes.map((name,i)=>{const pct=data?.bet_percent?.[name];const hasPct=valid(pct)&&pct<=100;return '<div class="odds-tile" style="border-color:'+colors[i]+';background:linear-gradient(150deg,'+colors[i]+'22,#10243b)"><small style="color:'+colors[i]+';font-weight:800">'+name+'</small><strong style="color:'+colors[i]+'">'+(hasPct?'%'+Math.round(pct):'—')+'</strong><small style="margin-top:6px">Oran: '+(valid(odds[name])&&odds[name]>1?odds[name].toFixed(2):'Veri yok')+'</small></div>';}).join('');
  const section=(title,values)=>'<div class="odds-section"><b>'+title+'</b>'+outcomes.map((name,i)=>{const value=values?.[name];const ok=valid(value)&&value<=100;return '<div class="odds-line"><span class="odds-label">'+name+'</span><div class="odds-track">'+(ok?'<div class="odds-fill" style="width:'+value+'%;background:'+colors[i]+'"></div>':'')+'</div><span class="odds-value">'+(ok?'%'+value.toFixed(1):'Veri yok')+'</span></div>';}).join('')+'</div>';
  const source=data?.source?esc(data.source):'Henüz bağlanmadı';
  const updated=data?.updated_at?esc(data.updated_at):'—';
