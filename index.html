@@ -281,12 +281,12 @@ function matchResultScores(home,away,h2h){
  const formEdge=clamp(.5+(wins(hr)-wins(ar))*.5);
  const venueEdge=hv.length>=3&&av.length>=3?clamp(.5+(wins(hv)-wins(av))*.5):.5;
  const venueH=h2h?.venue_last5?.count>=3?h2h.venue_last5:null;
- const h2h=h2h?.count>=5?h2h:null;
- const h2hEdge=venueH?clamp((venueH.home_wins+.5*venueH.draws)/venueH.count):h2h?clamp((h2h.home_wins+.5*h2h.draws)/h2h.count):.5;
+ const h2hData=h2h?.count>=5?h2h:null;
+ const h2hEdge=venueH?clamp((venueH.home_wins+.5*venueH.draws)/venueH.count):h2hData?clamp((h2hData.home_wins+.5*h2hData.draws)/h2hData.count):.5;
  const edge=clamp(.5+(homeEdge-.5)*.5+(formEdge-.5)*.2+(venueEdge-.5)*.15+(h2hEdge-.5)*.15);
  const attackClose=clamp(1-Math.abs(ha-aa)/1.2),defenseClose=clamp(1-Math.abs(hc-ac)/1.2);
  const recentDraw=(draws(hr)+draws(ar))/2;
- const h2hDraw=h2h?h2h.draws/h2h.count:null;
+ const h2hDraw=h2hData?h2hData.draws/h2hData.count:null;
  const venueDraw=hv.length>=3&&av.length>=3?(draws(hv)+draws(av))/2:null;
  const weighted=[[attackClose,25],[defenseClose,20],[recentDraw,25],[h2hDraw,20],[venueDraw,10]].filter(([v])=>v!==null);
  const drawEvidence=weighted.reduce((t,[v,w])=>t+v*w,0)/weighted.reduce((t,[v,w])=>t+w,0);
