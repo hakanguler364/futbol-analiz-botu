@@ -172,7 +172,7 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 /* Maç sonucu bahis verileri: kaynağı doğrulanmayan rakamlar gösterilmez */
 .odds-panel{margin:12px 0;padding:13px;border:1px solid #37678b;border-radius:14px;background:linear-gradient(145deg,#142d47,#0a1c30)}
 .odds-title{font-weight:750;font-size:15px;margin-bottom:11px}.odds-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.odds-tile{background:#10243b;border:1px solid #34506a;border-radius:11px;padding:10px 5px;text-align:center;min-width:0}.odds-tile small{display:block;margin-bottom:5px}.odds-tile strong{font-size:20px}
+.odds-tile{background:#10243b;border:1px solid #34506a;border-radius:11px;padding:10px 5px;text-align:center;min-width:0}.odds-tile small{display:block;margin-bottom:5px}.odds-tile strong{font-size:16px}.odds-money{display:block;margin-top:9px;padding-top:8px;border-top:1px solid #456079;font-size:11px;color:#d6e5f5}.odds-money b{display:block;font-size:14px;margin-top:3px;color:#f2f7ff}
 .odds-section{margin-top:13px;padding-top:10px;border-top:1px solid #2b4864;font-size:12px}.odds-line{display:flex;align-items:center;gap:8px;margin-top:8px}.odds-label{width:37px;flex:none}.odds-track{flex:1;height:11px;background:#30445b;border-radius:9px;overflow:hidden}.odds-fill{height:100%;border-radius:9px}.odds-value{min-width:48px;text-align:right}.odds-note{color:#aebcd2;font-size:11px;margin-top:12px;line-height:1.5}
 </style>
 </head>
@@ -401,7 +401,7 @@ function bettingOddsPanel(m){
  const colors=['#22c55e','#eab308','#ef4444'];
  const valid=(v)=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
  const odds=data?.odds||{};
- const tiles=outcomes.map((name,i)=>{const pct=data?.bet_percent?.[name];const hasPct=valid(pct)&&pct<=100;return '<div class="odds-tile" style="border-color:'+colors[i]+';background:linear-gradient(150deg,'+colors[i]+'22,#10243b)"><small style="color:'+colors[i]+';font-weight:800">'+name+'</small><strong style="color:'+colors[i]+'">'+(hasPct?'%'+Math.round(pct):'—')+'</strong><small style="margin-top:6px">Oran: '+(valid(odds[name])&&odds[name]>1?odds[name].toFixed(2):'Veri yok')+'</small></div>';}).join('');
+ const tiles=outcomes.map((name,i)=>{const pct=data?.bet_percent?.[name];const hasPct=valid(pct)&&pct<=100;return '<div class="odds-tile" style="border-color:'+colors[i]+';background:linear-gradient(150deg,'+colors[i]+'22,#10243b)"><small style="color:'+colors[i]+';font-weight:800">'+name+'</small><strong style="color:'+colors[i]+'">'+(hasPct?'%'+Math.round(pct):'—')+'</strong><small style="margin-top:6px">Oran: '+(valid(odds[name])&&odds[name]>1?odds[name].toFixed(2):'Veri yok')+'</small><span class="odds-money">💰 Yatırılan para<b>'+(valid(data?.money_percent?.[name])&&data.money_percent[name]<=100?'%'+Math.round(data.money_percent[name]):'Veri yok')+'</b></span></div>';}).join('');
  const section=(title,values)=>'<div class="odds-section"><b>'+title+'</b>'+outcomes.map((name,i)=>{const value=values?.[name];const ok=valid(value)&&value<=100;return '<div class="odds-line"><span class="odds-label">'+name+'</span><div class="odds-track">'+(ok?'<div class="odds-fill" style="width:'+value+'%;background:'+colors[i]+'"></div>':'')+'</div><span class="odds-value">'+(ok?'%'+value.toFixed(1):'Veri yok')+'</span></div>';}).join('')+'</div>';
  const source=data?.source?esc(data.source):'Henüz bağlanmadı';
  const updated=data?.updated_at?esc(data.updated_at):'—';
