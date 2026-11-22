@@ -165,6 +165,61 @@ ESPN_LEAGUES = ["eng.1","eng.2","eng.3","eng.4","eng.fa","eng.league_cup","esp.1
 SOCCERWAY_LEAGUES = {'pol.2': ('Polonya 1. Liga', ['poland/division-1']), 'pol.3': ('Polonya 2. Liga', ['poland/division-2']), 'cze.2': ('Çekya 2. Ligi', ['czech-republic/chnl']), 'ita.3': ('İtalya Serie C', ['italy/serie-c-group-a', 'italy/serie-c-group-b', 'italy/serie-c-group-c'])}
 ESPN_LEAGUES.extend(SOCCERWAY_LEAGUES)
 
+def openliga_season(kickoff):
+    season = kickoff.year - (kickoff.month < 7)
+    key = ("openligadb", season)
+    cached = CACHE.get(key)
+    if cached and time.time() - cached["time"] < 300:
+        return cached["result"]
+    with urllib.request.urlopen(
+        f"https://api.openligadb.de/getmatchdata/bl3/{season}", timeout=8
+    ) as response:
+        events = json.load(response)
+    CACHE[key] = {"time": time.time(), "result": events}
+    return events
+
+
+def openliga_recent(match, side):
+    kickoff = datetime.datetime.fromisoformat(match["utcDate"])
+    team_id = match[side + "Team"]["openliga_id"]
+    rows = []
+    for event in openliga_season(kickoff):
+        when = datetime.datetime.fromisoformat(event["matchDateTimeUTC"].replace("Z", "+00:00"))
+        if not event["matchIsFinished"] or when >= kickoff:
+            continue
+        teams = [event[key] for key in ("team1", "team2")]
+        ids = [team["teamId"] for team in teams]
+        if team_id not in ids:
+            continue
+        position = ids.index(team_id)
+        scores = {r.get("resultTypeKind"): (r["pointsTeam1"], r["pointsTeam2"])
+                  for r in event["matchResults"]}
+        full = scores.get("After90Minutes")
+        if full is None:
+            continue
+        half = scores.get("HalfTime", (None, None))
+        rows.append({
+            "date": when.date().isoformat(), "opponent": teams[1-position]["teamName"],
+            "venue": ("home", "away")[position], "scored": full[position],
+            "conceded": full[1-position], "first_half_scored": half[position],
+            "first_half_conceded": half[1-position],
+        })
+    rows.sort(key=lambda row: row["date"], reverse=True)
+    venue = [row for row in rows if row["venue"] == side]
+    half = [row for row in venue if row["first_half_scored"] is not None
+            and row["first_half_conceded"] is not None]
+    return {
+        "games": rows, "venue_games": venue, "count": len(rows), "venue_count": len(venue),
+        "scored": sum(row["scored"] for row in rows),
+        "conceded": sum(row["conceded"] for row in rows),
+        "venue_scored": sum(row["scored"] for row in venue),
+        "venue_conceded": sum(row["conceded"] for row in venue),
+        "first_half_count": len(half),
+        "first_half_scored": sum(row["first_half_scored"] for row in half),
+        "first_half_conceded": sum(row["first_half_conceded"] for row in half),
+    }
+
+
 def matches(date, league_filter=None):
     if league_filter and league_filter not in ESPN_LEAGUES:
         raise ValueError('Gecersiz lig secimi')
@@ -209,11 +264,7 @@ def matches(date, league_filter=None):
             return list(found.values())
         if league == "ger.3":
             selected_day = datetime.date.fromisoformat(date)
-            season = selected_day.year - (selected_day.month < 7)
-            with urllib.request.urlopen(
-                f"https://api.openligadb.de/getmatchdata/bl3/{season}", timeout=8
-            ) as response:
-                events = json.load(response)
+            events = openliga_season(selected_day)
             found = []
             for event in events:
                 kickoff = datetime.datetime.fromisoformat(event["matchDateTimeUTC"].replace("Z", "+00:00"))
@@ -221,7 +272,7 @@ def matches(date, league_filter=None):
                     continue
                 uid = int.from_bytes(hashlib.sha256(f'openligadb:{event["matchID"]}'.encode()).digest()[:7], "big")
                 teams = [
-                    {"name": event[side]["teamName"], "id": None, "crest": event[side].get("teamIconUrl")}
+                    {"name": event[side]["teamName"], "id": None, "openliga_id": event[side]["teamId"], "crest": event[side].get("teamIconUrl")}
                     for side in ("team1", "team2")
                 ]
                 found.append({
@@ -846,6 +897,8 @@ def analyze(match):
                             value = alternative
                     except (OSError, ValueError, TypeError, KeyError) as exc:
                         errors.append(f"{key} SportsDB: {exc}")
+            elif match.get("source") == "OpenLigaDB":
+                value = openliga_recent(match, "home" if key == "home_last5" else "away")
             elif match.get("source") == "ESPN":
                 side = "home" if key == "home_last5" else "away"
                 try:
