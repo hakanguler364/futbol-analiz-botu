@@ -164,7 +164,11 @@ def valid_date(value):
 ESPN_LEAGUES = ["eng.1","eng.2","eng.3","eng.4","eng.fa","eng.league_cup","esp.1","esp.2","esp.copa_del_rey","ger.1","ger.2","ger.3","ger.dfb_pokal","ita.1","ita.2","ita.coppa_italia","fra.1","fra.2","fra.coupe_de_france","tur.1","tur.2","tur.cup","ned.1","ned.2","ned.cup","por.1","por.2","por.taca.portugal","bel.1","bel.2","sco.1","sco.2","sco.3","sco.4","sco.fa","irl.1","nir.1","wal.1","aut.1","sui.1","den.1","nor.1","swe.1","fin.1","pol.1","cze.1","gre.1","rou.1","rus.1","ukr.1","cro.1","srb.1","hun.1","usa.1","usa.open","mex.1","mex.2","bra.1","bra.2","bra.copa","arg.1","arg.2","col.1","chi.1","uru.1","par.1","per.1","ecu.1","ven.1","bol.1","crc.1","hon.1","gua.1","slv.1","ksa.1","uae.1","qat.1","ind.1","jpn.1","jpn.2","kor.1","chn.1","aus.1","aus.2","idn.1","tha.1","mys.1","sgp.1","uefa.champions","uefa.europa","uefa.europa.conf","uefa.nations","uefa.euro","uefa.euro.qualifying","fifa.world","fifa.worldq.uefa","fifa.worldq.conmebol","fifa.worldq.concacaf","fifa.worldq.afc","fifa.worldq.caf","fifa.friendly","concacaf.champions","conmebol.libertadores","conmebol.sudamericana","afc.champions","caf.champions","fifa.club.world_cup"]
 
 SOCCERWAY_LEAGUES = {'pol.2': ('Polonya 1. Liga', ['poland/division-1']), 'pol.3': ('Polonya 2. Liga', ['poland/division-2']), 'cze.2': ('Çekya 2. Ligi', ['czech-republic/chnl']), 'ita.3': ('İtalya Serie C', ['italy/serie-c-group-a', 'italy/serie-c-group-b', 'italy/serie-c-group-c'])}
-ESPN_LEAGUES.extend(SOCCERWAY_LEAGUES)
+SOCCERWAY_LEAGUES.update({
+    "tur.2": ("Türkiye 1. Lig", ["turkey/1-lig"]),
+    "egy.2": ("Mısır 2. Ligi A Grubu", ["egypt/division-2-a"]),
+})
+ESPN_LEAGUES.extend(league for league in SOCCERWAY_LEAGUES if league not in ESPN_LEAGUES)
 
 def openliga_season(kickoff):
     season = kickoff.year - (kickoff.month < 7)
@@ -207,6 +211,10 @@ def openliga_recent(match, side):
             "conceded": full[1-position], "first_half_scored": half[position],
             "first_half_conceded": half[1-position],
         })
+    return summarize_team_games(rows, side)
+
+
+def summarize_team_games(rows, side):
     rows.sort(key=lambda row: row["date"], reverse=True)
     venue = [row for row in rows if row["venue"] == side]
     half = [row for row in venue if row["first_half_scored"] is not None
@@ -223,6 +231,71 @@ def openliga_recent(match, side):
     }
 
 
+def soccerway_events(league):
+    _, groups = SOCCERWAY_LEAGUES[league]
+    key = ("soccerway", league)
+    cached = CACHE.get(key)
+    if cached and time.time() - cached["time"] < 300:
+        return cached["events"]
+    events = {}
+    for group in groups:
+        for page in ("fixtures", "results"):
+            url = f"https://www.soccerway.com/{group}/{page}/"
+            request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            try:
+                with urllib.request.urlopen(request, timeout=8) as response:
+                    html = response.read().decode("utf-8")
+            except (OSError, UnicodeError) as exc:
+                print(f"SOCCERWAY_FIXTURE_ERROR {group} {page} {exc}", flush=True)
+                continue
+            for blob in re.findall(r"data: `(.*?)`", html, re.S):
+                if f"ZL÷/{group}/" not in blob:
+                    continue
+                for record in blob.split("~AA÷")[1:]:
+                    event_id, *parts = record.split("¬")
+                    fields = dict(field.split("÷", 1) for field in parts if "÷" in field)
+                    stamp = fields.get("AD", "")
+                    if not stamp.isdigit() or not fields.get("CX") or not fields.get("AF"):
+                        continue
+                    kickoff = datetime.datetime.fromtimestamp(int(stamp), datetime.timezone.utc)
+                    key_id = (group, event_id)
+                    previous = events.get(key_id)
+                    if previous is None or fields.get("AB") == "3":
+                        events[key_id] = (kickoff, fields)
+    if events:
+        CACHE[key] = {"time": time.time(), "events": events}
+    return events
+
+
+def soccerway_recent(match, side):
+    league = match["espn_league"]
+    team_id = match[side + "Team"].get("soccerway_id")
+    if not team_id:
+        return None
+    cutoff = datetime.datetime.fromisoformat(match["utcDate"])
+    first_day = season_start(match["utcDate"], league)
+    rows = []
+    for kickoff, event in soccerway_events(league).values():
+        day = (kickoff + datetime.timedelta(hours=3)).date().isoformat()
+        if kickoff >= cutoff or day < first_day or event.get("AB") != "3":
+            continue
+        teams = (event.get("PX"), event.get("PY"))
+        if team_id not in teams:
+            continue
+        try:
+            scores = int(event["AG"]), int(event["AH"])
+        except (KeyError, ValueError):
+            continue
+        pos = teams.index(team_id)
+        rows.append({
+            "date": day, "opponent": event["CX" if pos else "AF"],
+            "venue": ("home", "away")[pos], "scored": scores[pos],
+            "conceded": scores[1-pos], "first_half_scored": None,
+            "first_half_conceded": None,
+        })
+    return summarize_team_games(rows, side)
+
+
 def matches(date, league_filter=None):
     if league_filter and league_filter not in ESPN_LEAGUES:
         raise ValueError('Gecersiz lig secimi')
@@ -235,36 +308,20 @@ def matches(date, league_filter=None):
     leagues = ESPN_LEAGUES if not league_filter else [league_filter]
     def get_league(league):
         if league in SOCCERWAY_LEAGUES:
-            name, groups = SOCCERWAY_LEAGUES[league]
-            found = {}
-            for group in groups:
-                for page in ("fixtures", "results"):
-                    url = f"https://www.soccerway.com/{group}/{page}/"
-                    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-                    try:
-                        with urllib.request.urlopen(request, timeout=8) as response:
-                            html = response.read().decode("utf-8")
-                    except (OSError, UnicodeError) as exc:
-                        print(f"SOCCERWAY_FIXTURE_ERROR {group} {page} {exc}", flush=True)
-                        continue
-                    for blob in re.findall(r"data: `(.*?)`", html, re.S):
-                        for record in blob.split("~AA÷")[1:]:
-                            event_id, *parts = record.split("¬")
-                            fields = dict(field.split("÷", 1) for field in parts if "÷" in field)
-                            stamp = fields.get("AD", "")
-                            if not stamp.isdigit() or not fields.get("CX") or not fields.get("AF"):
-                                continue
-                            kickoff = datetime.datetime.fromtimestamp(int(stamp), datetime.timezone.utc)
-                            if (kickoff + datetime.timedelta(hours=3)).date().isoformat() != date:
-                                continue
-                            uid = int.from_bytes(hashlib.sha256(f"soccerway:{group}:{event_id}".encode()).digest()[:7], "big")
-                            found[-uid] = {
-                                "id": -uid, "utcDate": kickoff.isoformat(), "competition": {"name": name},
-                                "homeTeam": {"name": fields["CX"], "id": None},
-                                "awayTeam": {"name": fields["AF"], "id": None},
-                                "source": "Soccerway", "espn_league": league,
-                            }
-            return list(found.values())
+            name, _ = SOCCERWAY_LEAGUES[league]
+            found = []
+            for (group, event_id), (kickoff, fields) in soccerway_events(league).items():
+                if (kickoff + datetime.timedelta(hours=3)).date().isoformat() != date:
+                    continue
+                uid = int.from_bytes(hashlib.sha256(f"soccerway:{group}:{event_id}".encode()).digest()[:7], "big")
+                found.append({
+                    "id": -uid, "utcDate": kickoff.isoformat(), "competition": {"name": name},
+                    "homeTeam": {"name": fields["CX"], "id": None, "soccerway_id": fields.get("PX")},
+                    "awayTeam": {"name": fields["AF"], "id": None, "soccerway_id": fields.get("PY")},
+                    "source": "Soccerway", "espn_league": league,
+                })
+            if found or league != "tur.2":
+                return found
         if league == "ger.3":
             selected_day = datetime.date.fromisoformat(date)
             events = openliga_season(selected_day)
@@ -372,7 +429,7 @@ def matches(date, league_filter=None):
     # Do not invent fixtures when official providers return no events.
     # Confirmed Egyptian Second Division A fixtures, 19 November 2026 (12:30 UTC).
     # Fixture-only fallback: do not invent team histories or first-half scores.
-    if date == "2026-11-19" and not league_filter:
+    if date == "2026-11-19" and not league_filter and not any(m.get("espn_league") == "egy.2" for m in items):
         egypt_fixtures = [
             ("Baladiyat El Mahalla", "Haras El Hodood"),
             ("El Dakhleya", "Ismaily"),
@@ -393,7 +450,7 @@ def matches(date, league_filter=None):
                     "source": "Verified fixture fallback", "fixture_verified": True})
                 existing.add(pair)
     # Verified TFF fixture fallback for 20 November 2026.
-    if date == "2026-11-20" and not league_filter:
+    if date == "2026-11-20" and not league_filter and not any(m.get("espn_league") == "tur.2" for m in items):
         if not any("ğdır" in m.get("homeTeam", {}).get("name", "").casefold() and "mraniye" in m.get("awayTeam", {}).get("name", "").casefold() for m in items):
             items.append({"id": -202611202000, "utcDate": "2026-11-20T17:00:00Z",
                 "competition": {"name": "Türkiye 1. Lig"},
@@ -423,7 +480,8 @@ def matches(date, league_filter=None):
         return (int(bool(m.get("home_espn_id") and m.get("away_espn_id"))) * 100
                 + int(m.get("source") == "ESPN") * 30
                 + int(bool(m.get("homeTeam", {}).get("id") and m.get("awayTeam", {}).get("id"))) * 80
-                + int(m.get("source") == "TheSportsDB") * 10)
+                + int(m.get("source") == "TheSportsDB") * 10
+                + int(m.get("source") == "Soccerway") * 20)
     merged = {}
     for m in items:
         pair = (fixture_key(m["homeTeam"]["name"]), fixture_key(m["awayTeam"]["name"]))
@@ -994,8 +1052,10 @@ def analyze(match):
                         errors.append(f"{key} SportsDB: {exc}")
             elif match.get("espn_league"):
                 side = "home" if key == "home_last5" else "away"
+                value = soccerway_recent(match, side) if match.get("source") == "Soccerway" else None
                 try:
-                    value = espn_recent(match, side)
+                    if not value or not value.get("games"):
+                        value = espn_recent(match, side)
                 except (OSError, ValueError, TypeError, KeyError) as exc:
                     errors.append(f"{key} ESPN roster: {exc}")
                     value = None
