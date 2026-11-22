@@ -706,36 +706,40 @@ function recordLeagueHealth(match,result){
 
 
 async function autoCheckLeagueHealth(){
- const picker=el('leagueFilter');
- const codes=Array.from(picker.options).map(o=>o.value).filter(Boolean);
- const date=el('matchDate').value||localDate();
+ const codes=Array.from(el('leagueFilter').options).map(o=>o.value).filter(Boolean);
  const summary=el('leagueSummary');
- let checked=0,green=0,red=0;
- summary.textContent='Lig veri kontrolü arka planda başladı. Kontrol edilmeyenler gri kalır.';
- for(const code of codes){
-  // Only one request at a time to reduce free-provider rate limiting.
-  try{
-   const controller=new AbortController();
-   const timer=setTimeout(()=>controller.abort(),14000);
-   let data;
-   try{data=await api('/api/matches?date='+encodeURIComponent(date)+'&league='+encodeURIComponent(code),{signal:controller.signal});}
-   finally{clearTimeout(timer);}
-   const sample=(data.matches||[])[0];
-   if(sample){
-    const result=await api('/api/analyze/'+encodeURIComponent(sample.id));
+ const date=el('matchDate').value||localDate();
+ summary.textContent='Maç listesi tek istekte alınıyor; ligler kontrol edilecek.';
+ let data;
+ try{
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);
+  try{data=await api('/api/matches?date='+encodeURIComponent(date),{signal:controller.signal});}
+  finally{clearTimeout(timer);}
+ }catch(e){summary.textContent='Veri kontrolü başarısız; ligler gri bırakıldı.';return;}
+ const samples=new Map();
+ for(const match of data.matches||[])if(match.espn_league&&!samples.has(match.espn_league))samples.set(match.espn_league,match);
+ const queue=Array.from(samples.entries()).filter(([code])=>codes.includes(code));
+ const total=queue.length;let checked=0,green=0,red=0;
+ summary.textContent=total+' ligde maç bulundu; analiz kontrolü başladı.';
+ async function worker(){
+  while(queue.length){
+   const [code,match]=queue.shift();
+   try{
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+    let result;
+    try{result=await api('/api/analyze/'+encodeURIComponent(match.id),{signal:controller.signal});}
+    finally{clearTimeout(timer);}
     const a=result.sections?.home_last5,b=result.sections?.away_last5;
     const usable=Boolean((a?.games||[]).length&&(b?.games||[]).length);
     leagueHealth[code]=usable?'ok':'missing';
     if(usable)green++;else red++;
-   }
-   // No fixture today is not evidence that the league has no data.
-  }catch(e){
-   // Network errors are inconclusive, not proof of missing coverage.
+   }catch(e){/* Unverified stays gray. */}
+   checked++;paintLeagueHealth();
+   summary.textContent='Kontrol '+checked+'/'+total+' · 🟢 '+green+' · 🔴 '+red+' · ⚪ '+(codes.length-green-red);
   }
-  checked++;paintLeagueHealth();
-  summary.textContent='Otomatik kontrol: '+checked+'/'+codes.length+' lig · 🟢 '+green+' · 🔴 '+red+' · ⚪ '+(codes.length-green-red)+'. Gri: henüz doğrulanmadı veya bugün maç yok.';
-  await new Promise(resolve=>setTimeout(resolve,350));
  }
+ await Promise.all(Array.from({length:3},worker));
+ summary.textContent+=' · Tamamlandı (gri: maç yok veya doğrulanamadı).';
 }
 
 translateLeagueOptions();
