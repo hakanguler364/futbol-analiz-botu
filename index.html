@@ -466,6 +466,7 @@ if(r.status==='complete')ok++;
 else bad++;
 }
 results[id]=r;
+recordLeagueHealth(games.find(m=>String(m.id)===String(id)),r);
 const state=el('state-'+id);
 if(state){
 const a=r.sections?.home_last5,b=r.sections?.away_last5;
@@ -583,6 +584,7 @@ el('details').textContent=h2h+'\n\n'+fmt(r.home,r.sections?.home_last5)+'\n\n'+f
 }catch(e){
 if(!results[id]){done++;bad++;}
 results[id]={error:e.message};
+recordLeagueHealth(games.find(m=>String(m.id)===String(id)),null);
 const failedNode=el('state-'+id);if(failedNode)failedNode.textContent=' ✕ '+e.message;
 el('details').textContent=e.message;
 }
@@ -594,6 +596,7 @@ const leagues=selectedLeagues(),date=el('matchDate').value;
 if(!date){alert('Önce tarih seçin');return;}
 const current=++runId;done=ok=bad=0;results={};renderedAnalyses={};predictionScores={};games=[];update();
 el('matches').textContent='Seçilen liglerin maçları yükleniyor...';
+for(const league of leagues)leagueHealth[league]='unknown';paintLeagueHealth();
 try{
 const controller=new AbortController();
 const timeout=setTimeout(()=>controller.abort(),45000);
@@ -676,8 +679,34 @@ function translateLeagueOptions(){
   option.textContent=leagueNames[code]||(leagueCountries[parts[0]]?(leagueCountries[parts[0]]+' '+( /^[0-9]+$/.test(parts[1])?(parts[1]+'. Lig'):'Kupa / Turnuva')):code);
  }
 }
+
+// Lig renkleri yalnızca gerçek analiz yanıtlarına göre belirlenir.
+// Yeşil: en az bir maçta iki takımın geçmiş verisi mevcut.
+// Kırmızı: kontrol edilen maçlarda bu veri bulunamadı.
+// Gri: henüz analiz edilmedi veya o gün maç yok.
+const leagueHealth={};
+function paintLeagueHealth(){
+ const picker=el('leagueFilter');if(!picker)return;
+ for(const option of picker.options){
+  const state=leagueHealth[option.value]||'unknown';
+  option.style.color=state==='ok'?'#59f0a0':state==='missing'?'#ff818a':'#c0ccdd';
+  option.style.fontWeight=state==='ok'?'700':'400';
+  option.textContent=(state==='ok'?'🟢 ':state==='missing'?'🔴 ':'⚪ ')+(leagueNames[option.value]||option.dataset.originalLabel||option.value);
+ }
+}
+function recordLeagueHealth(match,result){
+ const code=match?.espn_league;
+ if(!code)return;
+ const a=result?.sections?.home_last5,b=result?.sections?.away_last5;
+ const usable=Boolean((a?.games||[]).length&&(b?.games||[]).length);
+ if(usable)leagueHealth[code]='ok';
+ else if(leagueHealth[code]!=='ok')leagueHealth[code]='missing';
+ paintLeagueHealth();
+}
+
 translateLeagueOptions();
 renderLeagueCheckboxes();
+paintLeagueHealth();
 el('leagueFilter').addEventListener('change',syncLeagueCheckboxes);
 
 el('matchDate').value=localDate();
