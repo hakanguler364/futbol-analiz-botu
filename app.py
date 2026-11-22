@@ -197,6 +197,8 @@ def openliga_recent(match, side):
                   for r in event["matchResults"]}
         full = scores.get("After90Minutes")
         if full is None:
+            full = next(((v["pointsTeam1"], v["pointsTeam2"]) for v in event["matchResults"] if v.get("resultTypeID") == 2), None)
+        if full is None:
             continue
         half = scores.get("HalfTime", (None, None))
         rows.append({
