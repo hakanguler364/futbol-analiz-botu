@@ -893,8 +893,32 @@ def analyze(match):
                 if match.get("source") == "ESPN" and (not value or value.get("count", 0) < 5):
                     try:
                         alternative = sportsdb_head_to_head(match.get("sportsdb_fallback_match") or match)
-                        if alternative and alternative.get("count", 0) > (value or {}).get("count", 0):
-                            value = alternative
+                        if alternative and alternative.get("games"):
+                            # Combine verified fixtures from both providers, instead of
+                            # discarding unique historical meetings from the smaller source.
+                            combined = {}
+                            for source in (value or {}, alternative):
+                                for game in source.get("games") or []:
+                                    key = (game.get("date"), game.get("home_goals"), game.get("away_goals"))
+                                    if key[0] and key[1] is not None and key[2] is not None:
+                                        combined.setdefault(key, game)
+                            if combined:
+                                merged = sorted(combined.values(), key=lambda g: g["date"], reverse=True)
+                                venue = [g for g in merged if g.get("at_home")][:5]
+                                def summary(rows):
+                                    return {
+                                        "count": len(rows),
+                                        "home_wins": sum(g["winner"] == "home" for g in rows),
+                                        "away_wins": sum(g["winner"] == "away" for g in rows),
+                                        "draws": sum(g["winner"] == "draw" for g in rows),
+                                        "under25": sum(g["home_goals"] + g["away_goals"] <= 2 for g in rows),
+                                        "over25": sum(g["home_goals"] + g["away_goals"] > 2 for g in rows),
+                                        "kg_var": sum(g["home_goals"] > 0 and g["away_goals"] > 0 for g in rows),
+                                        "kg_yok": sum(g["home_goals"] == 0 or g["away_goals"] == 0 for g in rows),
+                                    }
+                                value = {**summary(merged), "games": merged,
+                                         "venue_last5": summary(venue),
+                                         "source": "ESPN + TheSportsDB (verified combined results)"}
                     except (OSError, ValueError, TypeError, KeyError) as exc:
                         errors.append(f"{key} SportsDB: {exc}")
             elif match.get("source") == "OpenLigaDB":
