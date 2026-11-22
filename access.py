@@ -111,6 +111,19 @@ class AccessHandler:
                     self.send({"error": "Yönetici yetkisi gerekiyor"}, 403)
                 return True
             self.current_member = member
+            self.current_panels = PANEL_IDS if member["is_admin"] else tuple(self.panel_settings(db))
+            # Never expose unrestricted analytical endpoints to subscribers.
+            # The frontend currently derives several hidden panels from raw
+            # analysis data, so block that endpoint until a safe per-panel
+            # server-side response is implemented.
+            if not member["is_admin"] and (
+                path.startswith("/api/analyze/")
+                or path.startswith("/api/odds/")
+                or path.startswith("/api/team-info/")
+                or path == "/api/telegram"
+            ):
+                self.send({"error": "Bu veri aboneler için henüz güvenli biçimde sunulamıyor"}, 403)
+                return True
         return False
 
     def panel_settings(self, db):
