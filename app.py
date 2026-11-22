@@ -337,7 +337,20 @@ def matches(date, league_filter=None):
             out.append({"id": -uid, "utcDate": kickoff, "competition": {"name": event.get("strLeague") or "Other"}, "homeTeam": {"name": home, "id": None, "crest": event.get("strHomeTeamBadge")}, "awayTeam": {"name": away, "id": None, "crest": event.get("strAwayTeamBadge")}, "source": "TheSportsDB", "sportsdb_event_id": event.get("idEvent")})
         return out
     try:
-        extra_events = sportsdb() if not league_filter else []
+        # Keep the independent feed available for a specifically selected Turkish league.
+        # Filter strictly by competition to avoid mixing unrelated fixtures.
+        extra_events = sportsdb() if not league_filter or league_filter in ("tur.1", "tur.2") else []
+        if league_filter in ("tur.1", "tur.2"):
+            def is_requested_turkish_league(event):
+                name = str(event.get("competition", {}).get("name", "")).casefold()
+                if not any(term in name for term in ("turkish", "turkey", "türkiye", "tff", "super lig", "süper lig")):
+                    return False
+                if league_filter == "tur.2":
+                    return any(term in name for term in ("1. lig", "1 lig", "first league", "first division", "tff 1", "tff first", "2nd division", "second division"))
+                return any(term in name for term in ("super lig", "süper lig", "super league"))
+            extra_events = [event for event in extra_events if is_requested_turkish_league(event)]
+            for event in extra_events:
+                event["espn_league"] = league_filter
         existing = {(m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold()) for m in items}
         for m in extra_events:
             pair = (m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold())
