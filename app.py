@@ -870,9 +870,7 @@ def sportsdb_head_to_head(match):
         return None
     def lookup(name):
         url = "https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=" + urllib.parse.quote(sportsdb_team_alias(name))
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=9) as response:
-            teams = json.load(response).get("teams") or []
+        teams = sportsdb_json(url).get("teams") or []
         norm = team_match_key
         exact = next((t for t in teams if norm(t.get("strTeam")) == norm(sportsdb_team_alias(name))), None)
         return exact.get("idTeam") if exact else None
@@ -888,9 +886,7 @@ def sportsdb_head_to_head(match):
     events = []
     for url in urls:
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=9) as response:
-                payload = json.load(response)
+            payload = sportsdb_json(url)
             for value in payload.values():
                 if isinstance(value, list):
                     events.extend(e for e in value if isinstance(e, dict) and "idHomeTeam" in e)
