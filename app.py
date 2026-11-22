@@ -160,7 +160,10 @@ def valid_date(value):
     return value
 
 
-ESPN_LEAGUES = ["eng.1","eng.2","eng.3","eng.4","eng.fa","eng.league_cup","esp.1","esp.2","esp.copa_del_rey","ger.1","ger.2","ger.dfb_pokal","ita.1","ita.2","ita.coppa_italia","fra.1","fra.2","fra.coupe_de_france","tur.1","tur.2","tur.cup","ned.1","ned.2","ned.cup","por.1","por.2","por.taca.portugal","bel.1","bel.2","sco.1","sco.2","sco.3","sco.4","sco.fa","irl.1","nir.1","wal.1","aut.1","sui.1","den.1","nor.1","swe.1","fin.1","pol.1","cze.1","gre.1","rou.1","rus.1","ukr.1","cro.1","srb.1","hun.1","usa.1","usa.open","mex.1","mex.2","bra.1","bra.2","bra.copa","arg.1","arg.2","col.1","chi.1","uru.1","par.1","per.1","ecu.1","ven.1","bol.1","crc.1","hon.1","gua.1","slv.1","ksa.1","uae.1","qat.1","ind.1","jpn.1","jpn.2","kor.1","chn.1","aus.1","aus.2","idn.1","tha.1","mys.1","sgp.1","uefa.champions","uefa.europa","uefa.europa.conf","uefa.nations","uefa.euro","uefa.euro.qualifying","fifa.world","fifa.worldq.uefa","fifa.worldq.conmebol","fifa.worldq.concacaf","fifa.worldq.afc","fifa.worldq.caf","fifa.friendly","concacaf.champions","conmebol.libertadores","conmebol.sudamericana","afc.champions","caf.champions","fifa.club.world_cup"]
+ESPN_LEAGUES = ["eng.1","eng.2","eng.3","eng.4","eng.fa","eng.league_cup","esp.1","esp.2","esp.copa_del_rey","ger.1","ger.2","ger.3","ger.dfb_pokal","ita.1","ita.2","ita.coppa_italia","fra.1","fra.2","fra.coupe_de_france","tur.1","tur.2","tur.cup","ned.1","ned.2","ned.cup","por.1","por.2","por.taca.portugal","bel.1","bel.2","sco.1","sco.2","sco.3","sco.4","sco.fa","irl.1","nir.1","wal.1","aut.1","sui.1","den.1","nor.1","swe.1","fin.1","pol.1","cze.1","gre.1","rou.1","rus.1","ukr.1","cro.1","srb.1","hun.1","usa.1","usa.open","mex.1","mex.2","bra.1","bra.2","bra.copa","arg.1","arg.2","col.1","chi.1","uru.1","par.1","per.1","ecu.1","ven.1","bol.1","crc.1","hon.1","gua.1","slv.1","ksa.1","uae.1","qat.1","ind.1","jpn.1","jpn.2","kor.1","chn.1","aus.1","aus.2","idn.1","tha.1","mys.1","sgp.1","uefa.champions","uefa.europa","uefa.europa.conf","uefa.nations","uefa.euro","uefa.euro.qualifying","fifa.world","fifa.worldq.uefa","fifa.worldq.conmebol","fifa.worldq.concacaf","fifa.worldq.afc","fifa.worldq.caf","fifa.friendly","concacaf.champions","conmebol.libertadores","conmebol.sudamericana","afc.champions","caf.champions","fifa.club.world_cup"]
+
+SOCCERWAY_LEAGUES = {'pol.2': ('Polonya 1. Liga', ['poland/division-1']), 'pol.3': ('Polonya 2. Liga', ['poland/division-2']), 'cze.2': ('Çekya 2. Ligi', ['czech-republic/chnl']), 'ita.3': ('İtalya Serie C', ['italy/serie-c-group-a', 'italy/serie-c-group-b', 'italy/serie-c-group-c'])}
+ESPN_LEAGUES.extend(SOCCERWAY_LEAGUES)
 
 def matches(date, league_filter=None):
     if league_filter and league_filter not in ESPN_LEAGUES:
@@ -173,6 +176,59 @@ def matches(date, league_filter=None):
     import concurrent.futures, hashlib
     leagues = ESPN_LEAGUES if not league_filter else [league_filter]
     def get_league(league):
+        if league in SOCCERWAY_LEAGUES:
+            name, groups = SOCCERWAY_LEAGUES[league]
+            found = {}
+            for group in groups:
+                for page in ("fixtures", "results"):
+                    url = f"https://www.soccerway.com/{group}/{page}/"
+                    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                    try:
+                        with urllib.request.urlopen(request, timeout=8) as response:
+                            html = response.read().decode("utf-8")
+                    except (OSError, UnicodeError) as exc:
+                        print(f"SOCCERWAY_FIXTURE_ERROR {group} {page} {exc}", flush=True)
+                        continue
+                    for blob in re.findall(r"data: `(.*?)`", html, re.S):
+                        for record in blob.split("~AA÷")[1:]:
+                            event_id, *parts = record.split("¬")
+                            fields = dict(field.split("÷", 1) for field in parts if "÷" in field)
+                            stamp = fields.get("AD", "")
+                            if not stamp.isdigit() or not fields.get("CX") or not fields.get("AF"):
+                                continue
+                            kickoff = datetime.datetime.fromtimestamp(int(stamp), datetime.timezone.utc)
+                            if (kickoff + datetime.timedelta(hours=3)).date().isoformat() != date:
+                                continue
+                            uid = int.from_bytes(hashlib.sha256(f"soccerway:{group}:{event_id}".encode()).digest()[:7], "big")
+                            found[-uid] = {
+                                "id": -uid, "utcDate": kickoff.isoformat(), "competition": {"name": name},
+                                "homeTeam": {"name": fields["CX"], "id": None},
+                                "awayTeam": {"name": fields["AF"], "id": None},
+                                "source": "Soccerway", "espn_league": league,
+                            }
+            return list(found.values())
+        if league == "ger.3":
+            selected_day = datetime.date.fromisoformat(date)
+            season = selected_day.year - (selected_day.month < 7)
+            with urllib.request.urlopen(
+                f"https://api.openligadb.de/getmatchdata/bl3/{season}", timeout=8
+            ) as response:
+                events = json.load(response)
+            found = []
+            for event in events:
+                kickoff = datetime.datetime.fromisoformat(event["matchDateTimeUTC"].replace("Z", "+00:00"))
+                if (kickoff + datetime.timedelta(hours=3)).date() != selected_day:
+                    continue
+                uid = int.from_bytes(hashlib.sha256(f'openligadb:{event["matchID"]}'.encode()).digest()[:7], "big")
+                teams = [
+                    {"name": event[side]["teamName"], "id": None, "crest": event[side].get("teamIconUrl")}
+                    for side in ("team1", "team2")
+                ]
+                found.append({
+                    "id": -uid, "utcDate": kickoff.isoformat(), "competition": {"name": "Almanya 3. Liga"},
+                    "homeTeam": teams[0], "awayTeam": teams[1], "source": "OpenLigaDB", "espn_league": league,
+                })
+            return found
         # Turkey (UTC+3) calendar day overlaps two UTC calendar dates.
         utc_days = [date.replace("-", ""), (datetime.date.fromisoformat(date) - datetime.timedelta(days=1)).strftime("%Y%m%d")]
         def fetch_day(utc_day):
