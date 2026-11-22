@@ -39,7 +39,8 @@ def bsd_json(path):
 
 def bsd_matching_events(team, day, home, away, kickoff):
     query = urllib.parse.urlencode({
-        "team_name": team, "date_from": day, "date_to": day, "limit": 100,
+        "team_name": team, "date_from": (datetime.date.fromisoformat(day) - datetime.timedelta(days=1)).isoformat(),
+        "date_to": (datetime.date.fromisoformat(day) + datetime.timedelta(days=1)).isoformat(), "limit": 100,
     })
     data = bsd_json("events/?" + query)
     for event in data.get("results", []) if isinstance(data, dict) else []:
@@ -65,7 +66,7 @@ def bsd_odds(match):
         return {"source": "BSD: API anahtarı tanımlı değil", "odds": {}}
     key = str(match["id"])
     cached = BSD_CACHE.get(key)
-    if cached and time.time() - cached[0] < (900 if cached[1]["odds"] else 120):
+    if cached and time.time() - cached[0] < (900 if cached[1]["odds"] else 60):
         return cached[1]
     home = match.get("homeTeam", {}).get("name", "")
     away = match.get("awayTeam", {}).get("name", "")
