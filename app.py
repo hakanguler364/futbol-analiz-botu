@@ -687,7 +687,30 @@ def espn_halftime_scores(league, event_id, team_id):
 def espn_recent(match, side):
     league = match.get("espn_league")
     team_id = match.get(side + "_espn_id")
-    if not league or not team_id:
+    if not league:
+        return None
+    if not team_id:
+        # Fixture-only entries have no ESPN ID. Resolve from the league's real roster.
+        try:
+            roster_url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + urllib.parse.quote(str(league), safe="") + "/teams?limit=500"
+            request = urllib.request.Request(roster_url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+            with urllib.request.urlopen(request, timeout=10) as response:
+                roster = json.load(response)
+            entries = []
+            for sport in roster.get("sports") or []:
+                for group in sport.get("leagues") or []:
+                    entries.extend(group.get("teams") or [])
+            wanted = team_match_key(match.get(side + "Team", {}).get("name", ""))
+            candidates = [entry.get("team") or entry for entry in entries]
+            exact = [entry for entry in candidates if wanted and wanted in {
+                team_match_key(entry.get("displayName", "")),
+                team_match_key(entry.get("name", "")),
+                team_match_key(entry.get("shortDisplayName", ""))}]
+            if len(exact) == 1:
+                team_id = exact[0].get("id")
+        except (OSError, ValueError, TypeError, KeyError):
+            pass
+    if not team_id:
         return None
     kickoff = datetime.datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
     # ESPN team schedule contains previous results and may be season-specific.
@@ -968,6 +991,19 @@ def analyze(match):
                             value = alternative
                     except (OSError, ValueError, TypeError, KeyError) as exc:
                         errors.append(f"{key} SportsDB: {exc}")
+            elif match.get("espn_league"):
+                side = "home" if key == "home_last5" else "away"
+                try:
+                    value = espn_recent(match, side)
+                except (OSError, ValueError, TypeError, KeyError) as exc:
+                    errors.append(f"{key} ESPN roster: {exc}")
+                    value = None
+                if not value or not value.get("games"):
+                    try:
+                        value = sportsdb_recent(match, side)
+                    except (OSError, ValueError, TypeError, KeyError) as exc:
+                        errors.append(f"{key} SportsDB: {exc}")
+                        value = None
             elif team.get("id") is not None:
                 value = stats(recent(team["id"]), team["id"])
             else:
