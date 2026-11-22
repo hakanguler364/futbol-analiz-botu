@@ -562,6 +562,30 @@ def sportsdb_team_alias(name):
     return {"bodoglimt": "Bodø/Glimt", "fkbodoglimt": "Bodø/Glimt",
             "moldefk": "Molde", "molde": "Molde"}.get(key, name)
 
+# Shared provider cache and cooldown: avoid repeated requests that trigger HTTP 429.
+PROVIDER_CACHE = {}
+PROVIDER_COOLDOWN = {}
+
+def sportsdb_json(url):
+    now = time.time()
+    cached = PROVIDER_CACHE.get(url)
+    if cached and now - cached["time"] < 21600:
+        return cached["data"]
+    host = "thesportsdb"
+    if PROVIDER_COOLDOWN.get(host, 0) > now:
+        return cached["data"] if cached else {}
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.load(response)
+        PROVIDER_CACHE[url] = {"time": now, "data": data}
+        return data
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            PROVIDER_COOLDOWN[host] = now + 300
+            return cached["data"] if cached else {}
+        raise
+
 def sportsdb_recent(match, side):
     """Best-effort recent completed matches for fixture-only teams; never fabricate scores."""
     name = match[side + "Team"]["name"]
@@ -570,9 +594,7 @@ def sportsdb_recent(match, side):
                "Al Sekka El Hadid": "El Sekka El Hadid"}
     query = urllib.parse.urlencode({"t": sportsdb_team_alias(aliases.get(name, name))})
     def get_json(url):
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=10) as response:
-            return json.load(response)
+        return sportsdb_json(url)
     teams = get_json("https://www.thesportsdb.com/api/v1/json/123/searchteams.php?" + query).get("teams") or []
     normalized = team_match_key
     exact = [t for t in teams if normalized(t.get("strTeam")) == normalized(sportsdb_team_alias(aliases.get(name, name)))]
@@ -591,8 +613,7 @@ def sportsdb_recent(match, side):
     league_id = exact[0].get("idLeague")
     if league_id:
         kickoff_year = int(match.get("utcDate", "2026")[:4])
-        seasons = (str(kickoff_year), str(kickoff_year - 1),
-                   f"{kickoff_year}-{kickoff_year + 1}", f"{kickoff_year - 1}-{kickoff_year}")
+        seasons = (f"{kickoff_year - 1}-{kickoff_year}", f"{kickoff_year}-{kickoff_year + 1}")
         for season in seasons:
             try:
                 params = urllib.parse.urlencode({"id": str(league_id), "s": season})
