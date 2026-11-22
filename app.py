@@ -172,12 +172,23 @@ def matches(date, league_filter=None):
         return cached["matches"], False
     import concurrent.futures, hashlib
     leagues = ESPN_LEAGUES if not league_filter else [league_filter]
+    previous_day = (datetime.date.fromisoformat(date) - datetime.timedelta(days=1)).isoformat()
+    utc_days = (date, previous_day)
+    turkey_timezone = datetime.timezone(datetime.timedelta(hours=3))
+
+    def on_selected_day(kickoff):
+        try:
+            start = datetime.datetime.fromisoformat(kickoff.replace("Z", "+00:00"))
+        except (AttributeError, ValueError):
+            return False
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=datetime.timezone.utc)
+        return start.astimezone(turkey_timezone).date().isoformat() == date
+
     def get_league(league):
-        # Turkey (UTC+3) calendar day overlaps two UTC calendar dates.
-        utc_days = [date.replace("-", ""), (datetime.date.fromisoformat(date) - datetime.timedelta(days=1)).strftime("%Y%m%d")]
         def fetch_day(utc_day):
             found = []
-            url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + utc_day + "&limit=500"
+            url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + utc_day.replace("-", "") + "&limit=500"
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
             try:
                 with urllib.request.urlopen(req, timeout=8) as response:
@@ -187,11 +198,7 @@ def matches(date, league_filter=None):
                 return found
             for event in data.get("events", []):
                 kickoff = event.get("date", "")
-                try:
-                    turkey_day = (datetime.datetime.fromisoformat(kickoff.replace("Z", "+00:00")) + datetime.timedelta(hours=3)).date().isoformat()
-                except ValueError:
-                    continue
-                if turkey_day != date:
+                if not on_selected_day(kickoff):
                     continue
                 teams = (event.get("competitions") or [{}])[0].get("competitors", [])
                 home = next((t for t in teams if t.get("homeAway") == "home"), None)
@@ -214,8 +221,8 @@ def matches(date, league_filter=None):
             except Exception:
                 pass
     # Independent global daily fixture feed; merge with ESPN without replacing it.
-    def sportsdb():
-        url = "https://www.thesportsdb.com/api/v1/json/123/eventsday.php?" + urllib.parse.urlencode({"d": date, "s": "Soccer"})
+    def sportsdb(utc_day):
+        url = "https://www.thesportsdb.com/api/v1/json/123/eventsday.php?" + urllib.parse.urlencode({"d": utc_day, "s": "Soccer"})
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=15) as response:
             data = json.load(response)
@@ -224,30 +231,35 @@ def matches(date, league_filter=None):
             home, away = event.get("strHomeTeam"), event.get("strAwayTeam")
             if not home or not away:
                 continue
-            kickoff = (event.get("strTimestamp") or ((event.get("dateEvent") or date) + "T" + (event.get("strTime") or "00:00:00") + "Z"))
+            event_day = event.get("dateEvent") or utc_day
+            kickoff = event.get("strTimestamp")
+            if not kickoff and event.get("strTime"):
+                kickoff = event_day + "T" + event["strTime"] + "Z"
+            if kickoff:
+                if not on_selected_day(kickoff):
+                    continue
+            elif event_day == date:
+                kickoff = event_day + "T00:00:00Z"
+            else:
+                continue
             uid = int.from_bytes(hashlib.sha256(("sportsdb"+str(event.get("idEvent"))).encode()).digest()[:7], "big")
             out.append({"id": -uid, "utcDate": kickoff, "competition": {"name": event.get("strLeague") or "Other"}, "homeTeam": {"name": home, "id": None, "crest": event.get("strHomeTeamBadge")}, "awayTeam": {"name": away, "id": None, "crest": event.get("strAwayTeamBadge")}, "source": "TheSportsDB", "sportsdb_event_id": event.get("idEvent")})
         return out
-    try:
-        extra_events = sportsdb() if not league_filter else []
-        existing = {(m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold()) for m in items}
-        for m in extra_events:
-            pair = (m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold())
-            if pair not in existing:
-                items.append(m)
-                existing.add(pair)
-    except Exception as exc:
-        print("SPORTSDB_FIXTURE_ERROR " + str(exc)[:180], flush=True)
-    if TOKEN and not league_filter:
-        try:
-            extra = fetch("/matches?" + urllib.parse.urlencode({"dateFrom": date, "dateTo": date})).get("matches", [])
-            existing = {(m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold()) for m in items}
-            for m in extra:
-                pair = (m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold())
-                if pair not in existing:
-                    items.append(m)
-        except Exception:
-            pass
+    if not league_filter:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(utc_days)) as pool:
+            daily_fixtures = {day: pool.submit(sportsdb, day) for day in utc_days}
+            for day, future in daily_fixtures.items():
+                try:
+                    items.extend(future.result())
+                except Exception as exc:
+                    print(f"SPORTSDB_FIXTURE_ERROR {day}: {str(exc)[:180]}", flush=True)
+        if TOKEN:
+            try:
+                query = urllib.parse.urlencode({"dateFrom": previous_day, "dateTo": date})
+                extra = fetch("/matches?" + query).get("matches", [])
+                items.extend(m for m in extra if on_selected_day(m.get("utcDate")))
+            except Exception as exc:
+                print("FOOTBALL_DATA_FIXTURE_ERROR " + str(exc)[:180], flush=True)
     # Confirmed Egyptian Second Division A fixtures, 19 November 2026 (12:30 UTC).
     # Fixture-only fallback: do not invent team histories or first-half scores.
     if date == "2026-11-19" and not league_filter:
