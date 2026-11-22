@@ -44,11 +44,12 @@ def verify_password(password, stored):
 
 class PostgresConnection:
     def __init__(self, url):
+        import certifi
         import psycopg
         from psycopg.rows import dict_row
 
         self.connection = psycopg.connect(url, row_factory=dict_row, connect_timeout=8,
-                                          sslmode="verify-full", sslrootcert="system")
+                                          sslmode="verify-full", sslrootcert=certifi.where())
 
     def execute(self, query, parameters=()):
         return self.connection.execute(query.replace("?", "%s"), parameters)
