@@ -369,23 +369,7 @@ def matches(date, league_filter=None):
                     items.append(m)
         except Exception:
             pass
-    # TFF official 2026-27 15th-round fixtures; verified for 22 November 2026.
-    # Fixture-only fallback when providers omit Turkish First League matches.
-    if date == "2026-11-22" and (league_filter is None or league_filter == "tur.2"):
-        tff_fixtures = [
-            ("13:30", "Batman Petrolspor", "Muğlaspor"),
-            ("16:00", "Esenler Erokspor", "Antalyaspor"),
-            ("16:00", "Manisa FK", "Pendikspor"),
-            ("19:00", "Bursaspor", "Sivasspor"),
-        ]
-        existing_pairs = {(m.get("homeTeam", {}).get("name", "").casefold(), m.get("awayTeam", {}).get("name", "").casefold()) for m in items}
-        for local_time, home_name, away_name in tff_fixtures:
-            if (home_name.casefold(), away_name.casefold()) in existing_pairs:
-                continue
-            kickoff = datetime.datetime.fromisoformat(date + "T" + local_time + ":00+03:00").astimezone(datetime.timezone.utc)
-            uid = int.from_bytes(hashlib.sha256(("tff:tur.2:" + date + ":" + home_name + ":" + away_name).encode()).digest()[:7], "big")
-            items.append({"id": -uid, "utcDate": kickoff.isoformat(), "competition": {"name": "Trendyol 1. Lig"}, "homeTeam": {"name": home_name, "id": None}, "awayTeam": {"name": away_name, "id": None}, "source": "TFF (fikstür)", "espn_league": "tur.2"})
-            existing_pairs.add((home_name.casefold(), away_name.casefold()))
+    # Do not invent fixtures when official providers return no events.
     # Confirmed Egyptian Second Division A fixtures, 19 November 2026 (12:30 UTC).
     # Fixture-only fallback: do not invent team histories or first-half scores.
     if date == "2026-11-19" and not league_filter:
