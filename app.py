@@ -324,9 +324,7 @@ def matches(date, league_filter=None):
     # Independent global daily fixture feed; merge with ESPN without replacing it.
     def sportsdb():
         url = "https://www.thesportsdb.com/api/v1/json/123/eventsday.php?" + urllib.parse.urlencode({"d": date, "s": "Soccer"})
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=15) as response:
-            data = json.load(response)
+        data = sportsdb_json(url)
         out = []
         for event in data.get("events") or []:
             home, away = event.get("strHomeTeam"), event.get("strAwayTeam")
