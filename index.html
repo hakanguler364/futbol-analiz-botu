@@ -551,7 +551,9 @@ const msStatus=msLeader?optionRow('🏆 '+msLeader[0],msLeader[1],Boolean(msClos
 const recommendedStatus=safest?optionRow('⚽ '+safest[0],safest[1],Boolean(riskFlag&&safest[0]==='İY 0,5 Üst')):'';
 const over25Status=optionRow('⚽ 2,5 Üst',over25Score);
 const half05Status=optionRow('⏱️ İlk Yarı 0,5 Üst',adjustedHalfScore,Boolean(riskFlag));
-const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3><div class="inner"><h4>Seçeneklerin ayrı değerlendirmesi</h4>'+msStatus+recommendedStatus+over25Status+half05Status+'</div><small>Yeşil: model puanı en az 65 ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+'</div>';
+const systemMatch=games.find(m=>String(m.id)===String(id));
+const systemTeams=systemMatch?esc(systemMatch.homeTeam?.name||'Ev sahibi')+' - '+esc(systemMatch.awayTeam?.name||'Deplasman'):'Takımlar bulunamadı';
+const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4><h4>Seçeneklerin ayrı değerlendirmesi</h4>'+msStatus+recommendedStatus+over25Status+half05Status+'</div><small>Yeşil: model puanı en az 65 ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+'</div>';
 state.innerHTML=bettingOddsPanel(games.find(m=>String(m.id)===String(id)))+'<div class="analysis-grid">'+systemPanel+teamPanel+goalsPanel+avgPanel+h2hPanel+venueHPanel+halfMini+comparePanel+matchResultPanel(msResult)+'</div>';
 renderedAnalyses[id]=state.innerHTML;
  // Odds are fetched separately so missing/slow odds never block match analysis.
