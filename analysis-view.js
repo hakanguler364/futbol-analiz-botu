@@ -130,14 +130,19 @@ const goalConflict=goalDataReady&&msLeader&&((msLeader[0]==='MS 1'&&homeGoalEdge
 const goalConflictWarning=goalConflict?'<div class="inner" style="border:2px solid #ef4444;background:rgba(220,38,38,.12);padding:12px;border-radius:8px;margin-top:12px"><h4 style="color:#ff6b6b">⚠️ SİSTEM ÖNERİSİNDE GOL VERİSİ TUTARSIZLIĞI</h4><p>Önerilen '+msLeader[0]+' sonucu, takımların gol atma ve gol yeme ortalamalarıyla çelişiyor. Bu nedenle maç sonucu önerisi riskli olabilir; yalnızca MS puanına dayanarak karar vermeyin.</p><p><small>Ev sahibi: maç başına '+homeAttackAvg.toFixed(2)+' gol atıyor, '+homeDefenseAvg.toFixed(2)+' gol yiyor. Deplasman: maç başına '+awayAttackAvg.toFixed(2)+' gol atıyor, '+awayDefenseAvg.toFixed(2)+' gol yiyor.</small></p><small>Gol verilerinin işaret ettiği taraf: '+(homeGoalEdge>0?'Ev sahibi': 'Deplasman')+'. Bu karşılaştırma kesin maç sonucu değildir.</small></div>':'';
 
 const over25Score=poissonOver(fullLambda,2);
-const optionStatus=(score,extraRisk=false)=>Number.isFinite(score)&&score>=65&&!extraRisk?'🟢 OYNANABİLİR':'🔴 RİSKLİ';
-const optionRow=(label,score,extraRisk=false)=>'<div class="metric"><span>'+label+'</span><b style="color:'+(Number.isFinite(score)&&score>=65&&!extraRisk?'#75e8a6':'#ff858e')+'">'+(Number.isFinite(score)?Math.round(score)+' puan':'Veri yetersiz')+' · '+optionStatus(score,extraRisk)+'</b></div>';
+const optionRow=(label,score,extraRisk=false)=>{
+ const points=Number.isFinite(score)?Math.round(score):null;
+ const playable=points!==null&&points>80&&!extraRisk;
+ const color=playable?'#75e8a6':'#ff858e';
+ const status=playable?'🟢 OYNANABİLİR':'🔴 RİSKLİ';
+ return '<div class="metric"><span>'+label+'</span><b style="color:'+color+'">'+(points===null?'Veri yetersiz':points+' puan')+' · '+status+'</b></div>';
+};
 const msStatus=msLeader?optionRow('🏆 '+msLeader[0],msLeader[1],Boolean(msClose||goalConflict)):'';
 const recommendedStatus=safest?optionRow('⚽ '+safest[0],safest[1],Boolean(riskFlag&&safest[0]==='İY 0,5 Üst')):'';
 const over25Status=optionRow('⚽ 2,5 Üst',over25Score);
 const half05Status=optionRow('⏱️ İlk Yarı 0,5 Üst',adjustedHalfScore,Boolean(riskFlag));
 const systemTeams=esc(r.home)+' - '+esc(r.away);
-const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4><h4>Seçeneklerin ayrı değerlendirmesi</h4>'+msStatus+recommendedStatus+over25Status+half05Status+'</div><small>Yeşil: model puanı en az 65 ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+'</div>';
+const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4><h4>Seçeneklerin ayrı değerlendirmesi</h4>'+msStatus+recommendedStatus+over25Status+half05Status+'</div><small>Yeşil: model puanı 80’in üzerinde ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+'</div>';
 
 const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult)};
 const all=enabled===null;
