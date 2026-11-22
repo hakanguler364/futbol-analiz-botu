@@ -1,5 +1,6 @@
 """HTTP integration for the optional membership gate."""
 import json
+import threading
 import os
 import time
 from contextlib import closing
@@ -8,6 +9,8 @@ from pathlib import Path
 
 import membership
 
+PANEL_IDS = ("system", "teams", "goals", "averages", "h2h", "venue", "halftime", "comparison", "result")
+PANEL_LOCK = threading.Lock()
 COOKIE = "futbol_session"
 PAGES = Path(__file__).resolve().parent
 
@@ -80,6 +83,27 @@ class AccessHandler:
                 else:
                     self.send({"error": "Yönetici yetkisi gerekiyor"}, 403)
                 return True
+            if path == "/auth/panels" and method == "GET":
+                self.send({"enabled": self.panel_settings(db) if member["is_admin"] else self.panel_settings(db)})
+                return True
+            if path == "/auth/panels" and method == "POST":
+                if not member["is_admin"]:
+                    self.send({"error": "Yönetici yetkisi gerekiyor"}, 403)
+                    return True
+                try:
+                    size = int(self.headers.get("Content-Length", "0"))
+                    if not 0 <= size <= 4096: raise ValueError("Geçersiz istek")
+                    payload = json.loads(self.rfile.read(size) or b"{}")
+                    enabled = payload.get("enabled")
+                    if not isinstance(enabled, list) or any(not isinstance(x, str) or x not in PANEL_IDS for x in enabled): raise ValueError("Geçersiz panel seçimi")
+                    db.execute("CREATE TABLE IF NOT EXISTS panel_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
+                    db.execute("DELETE FROM panel_settings WHERE name=?", ("enabled",))
+                    db.execute("INSERT INTO panel_settings(name,value) VALUES (?,?)", ("enabled", json.dumps(list(dict.fromkeys(enabled)))))
+                    db.commit()
+                    self.send({"ok": True})
+                except (ValueError, TypeError, AttributeError):
+                    self.send({"error": "Geçersiz istek"}, 400)
+                return True
             if method == "GET" and path == "/auth/members":
                 if member["is_admin"]:
                     self.send({"members": membership.members(db)})
@@ -88,6 +112,11 @@ class AccessHandler:
                 return True
             self.current_member = member
         return False
+
+    def panel_settings(self, db):
+        db.execute("CREATE TABLE IF NOT EXISTS panel_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        row = db.execute("SELECT value FROM panel_settings WHERE name=?", ("enabled",)).fetchone()
+        return json.loads(row["value"]) if row else ["system"]
 
     def membership_action(self, path):
         try:
