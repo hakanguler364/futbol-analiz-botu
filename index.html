@@ -172,7 +172,7 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 /* Maç sonucu bahis verileri: kaynağı doğrulanmayan rakamlar gösterilmez */
 .odds-panel{margin:12px 0;padding:13px;border:1px solid #37678b;border-radius:14px;background:linear-gradient(145deg,#142d47,#0a1c30)}
 .odds-title{font-weight:750;font-size:15px;margin-bottom:11px}.odds-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.odds-tile{background:#10243b;border:1px solid #34506a;border-radius:11px;padding:10px 5px;text-align:center;min-width:0}.odds-tile small{display:block;margin-bottom:5px}.odds-tile strong{font-size:16px}.odds-money{display:block;margin-top:9px;padding-top:8px;border-top:1px solid #456079;font-size:11px;color:#d6e5f5}.odds-money b{display:block;font-size:14px;margin-top:3px;color:#f2f7ff}
+.odds-tile{background:#10243b;border:1px solid #34506a;border-radius:11px;padding:10px 5px;text-align:center;min-width:0}.odds-tile small{display:block;margin-bottom:5px}.odds-tile .odds-price{display:block;font-size:clamp(18px,5.8vw,26px);font-variant-numeric:tabular-nums;line-height:1.2;color:#f2f7ff}.odds-tile .odds-preference{margin:6px 0 0;font-size:11px;color:#ccdaea;line-height:1.35}.odds-money{display:block;margin-top:9px;padding-top:8px;border-top:1px solid #456079;font-size:11px;color:#d6e5f5}.odds-money b{display:block;font-size:14px;margin-top:3px;color:#f2f7ff}
 .odds-section{margin-top:13px;padding-top:10px;border-top:1px solid #2b4864;font-size:12px}.odds-line{display:flex;align-items:center;gap:8px;margin-top:8px}.odds-label{width:37px;flex:none}.odds-track{flex:1;height:11px;background:#30445b;border-radius:9px;overflow:hidden}.odds-fill{height:100%;border-radius:9px}.odds-value{min-width:48px;text-align:right}.odds-note{color:#aebcd2;font-size:11px;margin-top:12px;line-height:1.5}
 </style>
 </head>
@@ -417,8 +417,11 @@ function bettingOddsPanel(m){
  // Decimal odds and model predictions are NEVER treated as betting shares.
  const shares=data?.bet_percent;
  const hasVerifiedShares=Boolean(data?.bet_percent_source)&&outcomes.every(k=>valid(shares?.[k])&&shares[k]<=100)&&Math.abs(outcomes.reduce((sum,k)=>sum+shares[k],0)-100)<1.1;
- const tiles=outcomes.map((name,i)=>'<div class="odds-tile" style="border-color:'+colors[i]+';background:linear-gradient(150deg,'+colors[i]+'22,#10243b)"><small style="color:'+colors[i]+';font-weight:800">'+name+'</small><strong style="color:'+colors[i]+'">'+(hasVerifiedShares?'%'+shares[name].toFixed(1):'—')+'</strong><small style="margin-top:6px">Oran: '+(valid(odds[name])&&odds[name]>1?odds[name].toFixed(2):'Veri yok')+'</small></div>').join('');
- const section=hasVerifiedShares?'<div class="odds-section"><b>👥 Gerçek bahis tercih yüzdeleri</b>'+outcomes.map((name,i)=>'<div class="odds-line"><span class="odds-label">'+name+'</span><div class="odds-track"><div class="odds-fill" style="width:'+shares[name]+'%;background:'+colors[i]+'"></div></div><span class="odds-value">%'+shares[name].toFixed(1)+'</span></div>').join('')+'</div>':'<div class="odds-section"><b>👥 Gerçek bahis tercih yüzdeleri</b><p class="muted">Doğrulanmış bahis dağılımı verisi bulunmuyor. Oranlardan tahmini yüzde üretilmez.</p></div>';
+ const tiles=outcomes.map((name,i)=>{
+  const hasOdds=valid(odds[name])&&odds[name]>1;
+  return '<div class="odds-tile" style="border-color:'+colors[i]+';background:linear-gradient(150deg,'+colors[i]+'22,#10243b)"><small style="color:'+colors[i]+';font-weight:800">'+name+'</small><strong class="odds-price">'+(hasOdds?odds[name].toFixed(2):'Veri yok')+'</strong><small class="odds-preference">'+(hasVerifiedShares?'Oynanma: %'+shares[name].toFixed(1):'Oynanma: Veri yok')+'</small></div>';
+ }).join('');
+ const section=hasVerifiedShares?'<div class="odds-section"><b>👥 Gerçek bahis tercih yüzdeleri</b>'+outcomes.map((name,i)=>'<div class="odds-line"><span class="odds-label">'+name+'</span><div class="odds-track"><div class="odds-fill" style="width:'+shares[name]+'%;background:'+colors[i]+'"></div></div><span class="odds-value">%'+shares[name].toFixed(1)+'</span></div>').join('')+'</div>':'<div class="odds-section"><b>👥 Gerçek bahis tercih yüzdeleri</b><p class="muted">Bu maç için bahis adedine dayalı doğrulanmış oynanma yüzdesi bulunmuyor.</p></div>';
  const source=data?.source?esc(data.source):'Oranlar yükleniyor';
  const shareSource=hasVerifiedShares?' · Dağılım kaynağı: '+esc(data.bet_percent_source):'';
  const updated=data?.updated_at?esc(data.updated_at):'—';
