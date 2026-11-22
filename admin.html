@@ -35,6 +35,19 @@ loadPanels().catch(e=>document.querySelector('#panelMessage').textContent=e.mess
 
 <p id="message" role="status"></p>
 <ul id="members"></ul>
+<dialog id="passwordDialog">
+  <form id="passwordForm">
+    <h2>Şifreyi sıfırla</h2>
+    <p id="passwordMember"></p>
+    <label>Yeni şifre
+      <input id="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required>
+    </label>
+    <p>En az 12 karakter kullanın. Üyenin açık oturumları kapanır.</p>
+    <p id="passwordError" role="status"></p>
+    <button type="button" id="cancelPassword">Vazgeç</button>
+    <button type="submit" id="savePassword">Şifreyi kaydet</button>
+  </form>
+</dialog>
 </main>
 <script>
 const list = document.querySelector('#members');
@@ -46,6 +59,42 @@ async function request(path, options) {
   if (!response.ok) throw new Error(result.error);
   return result;
 }
+
+const passwordDialog = document.querySelector('#passwordDialog');
+const passwordForm = document.querySelector('#passwordForm');
+const passwordError = document.querySelector('#passwordError');
+const savePassword = document.querySelector('#savePassword');
+let passwordMemberId;
+
+document.querySelector('#cancelPassword').onclick = () => passwordDialog.close();
+passwordDialog.addEventListener('cancel', event => {
+  if (savePassword.disabled) event.preventDefault();
+});
+passwordDialog.addEventListener('close', () => passwordForm.reset());
+passwordForm.onsubmit = async event => {
+  event.preventDefault();
+  passwordError.textContent = '';
+  savePassword.disabled = true;
+  document.querySelector('#cancelPassword').disabled = true;
+  try {
+    await request('/auth/access', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Futbol-Request': '1'},
+      body: JSON.stringify({
+        id: passwordMemberId,
+        action: 'reset_password',
+        password: document.querySelector('#newPassword').value
+      })
+    });
+    passwordDialog.close();
+    message.textContent = 'Şifre değiştirildi ve eski oturumlar kapatıldı.';
+  } catch (error) {
+    passwordError.textContent = error.message;
+  } finally {
+    savePassword.disabled = false;
+    document.querySelector('#cancelPassword').disabled = false;
+  }
+};
 
 async function loadMembers() {
   const {members} = await request('/auth/members');
@@ -79,7 +128,16 @@ async function loadMembers() {
           button.disabled = false;
         }
       };
-      row.append(button);
+      const reset = document.createElement('button');
+      reset.type = 'button';
+      reset.textContent = 'Şifreyi sıfırla';
+      reset.onclick = () => {
+        passwordMemberId = member.id;
+        document.querySelector('#passwordMember').textContent = member.phone;
+        passwordError.textContent = '';
+        passwordDialog.showModal();
+      };
+      row.append(button, reset);
     }
     list.append(row);
   }

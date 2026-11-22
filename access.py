@@ -168,12 +168,14 @@ class AccessHandler:
             raise PermissionError("Yönetici yetkisi gerekiyor")
         member_id = data.get("id")
         action = data.get("action")
-        if type(member_id) is not int or not 0 < member_id < 2**63 or action not in ("approve", "open", "block"):
+        if type(member_id) is not int or not 0 < member_id < 2**63 or action not in ("approve", "open", "block", "reset_password"):
             raise ValueError("Geçersiz işlem")
         target = db.execute("SELECT is_admin,expires_at FROM members WHERE id=?", (member_id,)).fetchone()
         if not target or target["is_admin"]:
             raise ValueError("Bu hesabın durumu değiştirilemez")
-        if action == "approve":
+        if action == "reset_password":
+            membership.reset_password(db, member_id, data.get("password"))
+        elif action == "approve":
             membership.approve(db, member_id)
         elif action == "open":
             if target["expires_at"] is not None and target["expires_at"] <= int(time.time()):

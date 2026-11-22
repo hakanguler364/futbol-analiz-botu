@@ -157,6 +157,12 @@ def limit_attempts(db):
     db.commit()
 
 
+def reset_password(db, member_id, password):
+    new_hash = password_hash(password)
+    db.execute("UPDATE members SET password_hash=? WHERE id=?", (new_hash, member_id))
+    db.execute("DELETE FROM sessions WHERE member_id=?", (member_id,))
+
+
 def login(db, phone, password):
     phone = normalize_phone(phone)
     member = db.execute("SELECT * FROM members WHERE phone=?", (phone,)).fetchone()
@@ -170,13 +176,18 @@ def login(db, phone, password):
     now = int(time.time())
     if db.execute("SELECT 1 FROM pending_members WHERE member_id=?", (member["id"],)).fetchone():
         raise PermissionError("Hesabınız yönetici onayı bekliyor")
-    db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
     if member["blocked"] or (not member["is_admin"] and member["expires_at"] is not None and member["expires_at"] <= now):
         raise PermissionError("Üyelik kapalı veya süresi dolmuş")
+    updated = db.execute(
+        "UPDATE members SET login_count=login_count+1,last_seen=? WHERE id=? AND password_hash=?",
+        (now, member["id"], member["password_hash"]),
+    )
+    if updated.rowcount != 1:
+        raise ValueError("Telefon veya şifre hatalı")
+    db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
     token = secrets.token_urlsafe(32)
     db.execute("INSERT INTO sessions VALUES(?,?,?,?)",
                (hashlib.sha256(token.encode()).hexdigest(), member["id"], now+SESSION_SECONDS, now))
-    db.execute("UPDATE members SET login_count=login_count+1,last_seen=? WHERE id=?", (now,member["id"]))
     db.commit()
     return token
 
