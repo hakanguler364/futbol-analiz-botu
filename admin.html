@@ -9,6 +9,30 @@
 <main>
 <a href="/">Analiz merkezine dön</a>
 <h1>Üyeler</h1>
+<section style="margin:1.5rem 0;padding:1rem;background:#192b43;border:1px solid #42607c;border-radius:.6rem">
+<h2>Abonelerin görebileceği analizler</h2>
+<p>İşaretli kutular abonelere gösterilir. Ayarlar sunucuya kaydedilir.</p>
+<div id="panelChoices"></div>
+<button id="savePanels" type="button">Seçimleri kaydet</button>
+<p id="panelMessage" role="status"></p>
+</section>
+<script>
+const panels=[['system','Sistem Önerisi'],['teams','Takım analizi'],['goals','Gol analizi'],['averages','Ortalamalar'],['h2h','İkili rekabet'],['venue','İç saha / deplasman'],['halftime','İlk yarı'],['comparison','Karşılaştırma'],['result','Maç sonucu']];
+async function loadPanels(){
+ const response=await fetch('/auth/panels');if(!response.ok)throw Error('Ayarlar alınamadı');
+ const data=await response.json();const box=document.querySelector('#panelChoices');box.replaceChildren();
+ for(const [id,label] of panels){const row=document.createElement('label');row.style.cssText='display:block;margin:9px 0';const input=document.createElement('input');input.type='checkbox';input.value=id;input.checked=data.enabled.includes(id);row.append(input,' '+label);box.append(row);}
+}
+document.querySelector('#savePanels').onclick=async()=>{
+ const message=document.querySelector('#panelMessage');message.textContent='';
+ try{const enabled=[...document.querySelectorAll('#panelChoices input:checked')].map(x=>x.value);
+ const response=await fetch('/auth/panels',{method:'POST',headers:{'Content-Type':'application/json','X-Futbol-Request':'1'},body:JSON.stringify({enabled})});
+ if(!response.ok)throw Error((await response.json()).error||'Kaydedilemedi');message.textContent='Seçimler kaydedildi.';}
+ catch(e){message.textContent=e.message;}
+};
+loadPanels().catch(e=>document.querySelector('#panelMessage').textContent=e.message);
+</script>
+
 <p id="message" role="status"></p>
 <ul id="members"></ul>
 </main>
