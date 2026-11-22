@@ -704,6 +704,40 @@ function recordLeagueHealth(match,result){
  paintLeagueHealth();
 }
 
+
+async function autoCheckLeagueHealth(){
+ const picker=el('leagueFilter');
+ const codes=Array.from(picker.options).map(o=>o.value).filter(Boolean);
+ const date=el('matchDate').value||localDate();
+ const summary=el('leagueSummary');
+ let checked=0,green=0,red=0;
+ summary.textContent='Lig veri kontrolü arka planda başladı. Kontrol edilmeyenler gri kalır.';
+ for(const code of codes){
+  // Only one request at a time to reduce free-provider rate limiting.
+  try{
+   const controller=new AbortController();
+   const timer=setTimeout(()=>controller.abort(),14000);
+   let data;
+   try{data=await api('/api/matches?date='+encodeURIComponent(date)+'&league='+encodeURIComponent(code),{signal:controller.signal});}
+   finally{clearTimeout(timer);}
+   const sample=(data.matches||[])[0];
+   if(sample){
+    const result=await api('/api/analyze/'+encodeURIComponent(sample.id));
+    const a=result.sections?.home_last5,b=result.sections?.away_last5;
+    const usable=Boolean((a?.games||[]).length&&(b?.games||[]).length);
+    leagueHealth[code]=usable?'ok':'missing';
+    if(usable)green++;else red++;
+   }
+   // No fixture today is not evidence that the league has no data.
+  }catch(e){
+   // Network errors are inconclusive, not proof of missing coverage.
+  }
+  checked++;paintLeagueHealth();
+  summary.textContent='Otomatik kontrol: '+checked+'/'+codes.length+' lig · 🟢 '+green+' · 🔴 '+red+' · ⚪ '+(codes.length-green-red)+'. Gri: henüz doğrulanmadı veya bugün maç yok.';
+  await new Promise(resolve=>setTimeout(resolve,350));
+ }
+}
+
 translateLeagueOptions();
 renderLeagueCheckboxes();
 paintLeagueHealth();
@@ -711,6 +745,7 @@ el('leagueFilter').addEventListener('change',syncLeagueCheckboxes);
 
 el('matchDate').value=localDate();
 today();
+autoCheckLeagueHealth();
 </script>
 </body>
 </html>
