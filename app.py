@@ -37,61 +37,78 @@ def bsd_json(path):
     with urllib.request.urlopen(req, timeout=12) as response:
         return json.load(response)
 
-def bsd_name(value):
-    import unicodedata
-    value = unicodedata.normalize("NFKD", str(value or "").casefold())
-    value = "".join(c for c in value if not unicodedata.combining(c))
-    return re.sub(r"[^a-z0-9]", "", value)
+def bsd_matching_events(team, day, home, away, kickoff):
+    query = urllib.parse.urlencode({
+        "team_name": team, "date_from": day, "date_to": day, "limit": 100,
+    })
+    data = bsd_json("events/?" + query)
+    for event in data.get("results", []) if isinstance(data, dict) else []:
+        eh = event.get("home_team") or event.get("home") or ""
+        ea = event.get("away_team") or event.get("away") or ""
+        if isinstance(eh, dict):
+            eh = eh.get("name", "")
+        if isinstance(ea, dict):
+            ea = ea.get("name", "")
+        if (team_match_key(eh), team_match_key(ea)) != (home, away):
+            continue
+        event_time = event.get("event_date") or event.get("start_time") or event.get("start_at") or event.get("date") or event.get("kickoff")
+        try:
+            event_start = datetime.datetime.fromisoformat(str(event_time).replace("Z", "+00:00"))
+            if abs((kickoff - event_start).total_seconds()) <= 7200:
+                yield event
+        except (ValueError, TypeError):
+            continue
+
 
 def bsd_odds(match):
     if not BSD_TOKEN:
         return {"source": "BSD: API anahtarı tanımlı değil", "odds": {}}
     key = str(match["id"])
     cached = BSD_CACHE.get(key)
-    if cached and time.time() - cached[0] < 900:
+    if cached and time.time() - cached[0] < (900 if cached[1]["odds"] else 120):
         return cached[1]
     home = match.get("homeTeam", {}).get("name", "")
     away = match.get("awayTeam", {}).get("name", "")
-    kickoff = str(match.get("utcDate") or "")
-    day = kickoff[:10]
-    result = {"source": "BSD: eşleşen oran bulunamadı", "odds": {}}
+    home_key, away_key = team_match_key(home), team_match_key(away)
+    result = {"source": "BSD: maç eşleşmesi bulunamadı", "odds": {}}
     try:
-        # Match both teams and kickoff: a similar team name alone is never sufficient.
-        query = urllib.parse.urlencode({"team_name": home, "date_from": day, "date_to": day, "limit": 100})
-        data = bsd_json("events/?" + query)
-        events = data.get("results", []) if isinstance(data, dict) else []
-        for event in events:
-            eh = event.get("home_team") or event.get("home") or ""
-            ea = event.get("away_team") or event.get("away") or ""
-            if isinstance(eh, dict): eh = eh.get("name", "")
-            if isinstance(ea, dict): ea = ea.get("name", "")
-            event_time = str(event.get("start_time") or event.get("start_at") or event.get("date") or event.get("event_date") or event.get("kickoff") or "")
-            if bsd_name(home) != bsd_name(eh) or bsd_name(away) != bsd_name(ea):
-                continue
-            if not event_time:
-                continue
-            try:
-                t1 = datetime.datetime.fromisoformat(kickoff.replace("Z", "+00:00"))
-                t2 = datetime.datetime.fromisoformat(event_time.replace("Z", "+00:00"))
-                if abs((t1-t2).total_seconds()) > 7200: continue
-            except (ValueError, TypeError): continue
-            event_id = event.get("id") or event.get("event_id")
-            if not event_id: continue
-            raw = bsd_json("events/" + urllib.parse.quote(str(event_id), safe="") + "/odds/")
-            values = raw.get("odds") or {}
-            prices = {}
-            for label, field in (("MS 1", "home_win"), ("MS 0", "draw"), ("MS 2", "away_win")):
-                v = values.get(field)
-                if isinstance(v, (float, int)) and not isinstance(v, bool) and v > 1:
-                    prices[label] = float(v)
-            result = {"source": "BSD ücretsiz konsensüs oranları", "odds": prices,
-                      "updated_at": raw.get("last_update_at")}
-            break
+        kickoff = datetime.datetime.fromisoformat(str(match.get("utcDate") or "").replace("Z", "+00:00"))
+        if not home_key or not away_key:
+            return result
+        day = kickoff.date().isoformat()
+        checked_events = set()
+        for team in dict.fromkeys((home, away)):
+            for event in bsd_matching_events(team, day, home_key, away_key, kickoff):
+                event_id = event.get("id") or event.get("event_id")
+                if not event_id or event_id in checked_events:
+                    continue
+                checked_events.add(event_id)
+                result = {"source": "BSD: maç eşleşti, MS oranı yayımlanmamış", "odds": {}}
+                try:
+                    raw = bsd_json("events/" + urllib.parse.quote(str(event_id), safe="") + "/odds/")
+                except urllib.error.HTTPError as exc:
+                    if exc.code == 404:
+                        continue
+                    raise
+                values = raw.get("odds") or {}
+                prices = {}
+                for label, field in (("MS 1", "home_win"), ("MS 0", "draw"), ("MS 2", "away_win")):
+                    value = values.get(field)
+                    if isinstance(value, (int, float)) and not isinstance(value, bool) and 1 < value < float("inf"):
+                        prices[label] = float(value)
+                if prices:
+                    result = {"source": "BSD konsensüs oranları", "odds": prices,
+                              "updated_at": raw.get("last_update_at")}
+                    break
+            if result["odds"]:
+                break
     except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError, TypeError, KeyError) as exc:
         print("BSD_ODDS_ERROR " + str(exc)[:160], flush=True)
-        result = {"source": "BSD: oran bağlantısı kullanılamıyor", "odds": {}}
+        message = "API anahtarı veya erişim yetkisi doğrulanamadı" if isinstance(exc, urllib.error.HTTPError) and exc.code in (401, 403) else "oran bağlantısı kullanılamıyor"
+        result = {"source": "BSD: " + message, "odds": {}}
     BSD_CACHE[key] = (time.time(), result)
     return result
+
 
 STANDINGS_CACHE = {}
 
