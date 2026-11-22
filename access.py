@@ -9,10 +9,11 @@ from pathlib import Path
 
 import membership
 
-PANEL_IDS = ("system", "teams", "goals", "averages", "h2h", "venue", "halftime", "comparison", "result")
+PANEL_IDS = ("system", "teams", "goals", "averages", "h2h", "venue", "halftime", "comparison", "result", "odds")
 PANEL_LOCK = threading.Lock()
 COOKIE = "futbol_session"
 PAGES = Path(__file__).resolve().parent
+ANALYSIS_VIEW = (PAGES / "analysis-view.js").read_text(encoding="utf-8")
 
 
 def configure():
@@ -112,17 +113,12 @@ class AccessHandler:
                 return True
             self.current_member = member
             self.current_panels = PANEL_IDS if member["is_admin"] else tuple(self.panel_settings(db))
-            # Never expose unrestricted analytical endpoints to subscribers.
-            # The frontend currently derives several hidden panels from raw
-            # analysis data, so block that endpoint until a safe per-panel
-            # server-side response is implemented.
             if not member["is_admin"] and (
-                path.startswith("/api/analyze/")
-                or path.startswith("/api/odds/")
-                or path.startswith("/api/team-info/")
+                (path.startswith("/api/odds/") and "odds" not in self.current_panels)
+                or (path.startswith("/api/team-info/") and "teams" not in self.current_panels)
                 or path == "/api/telegram"
             ):
-                self.send({"error": "Bu veri aboneler için henüz güvenli biçimde sunulamıyor"}, 403)
+                self.send({"error": "Bu panel hesabınız için açık değil"}, 403)
                 return True
         return False
 
@@ -188,12 +184,18 @@ class AccessHandler:
 
     def access_page(self, filename):
         body = (PAGES / filename).read_bytes()
+        if filename == "index.html":
+            body = body.replace(b"/* SHARED_ANALYSIS_VIEW */", ANALYSIS_VIEW.encode("utf-8"))
+            if self.membership_path and not self.current_member["is_admin"]:
+                panels = json.dumps(self.current_panels).encode("ascii")
+                body = body.replace(b"/* ENABLED_PANELS */ null", panels)
         if filename == "index.html" and self.membership_path:
             body = body.replace(b'id="accountNav" hidden', b'id="accountNav"')
             if self.current_member["is_admin"]:
                 body = body.replace(b'href="/admin" hidden', b'href="/admin"')
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.write_body(body)

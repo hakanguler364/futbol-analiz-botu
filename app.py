@@ -2,7 +2,7 @@
 """Football analysis dashboard. Python standard library only."""
 import os, json, urllib.request, urllib.parse, urllib.error, http.server, datetime, pathlib, re, time
 
-from access import AccessHandler, configure
+from access import ANALYSIS_VIEW, AccessHandler, configure
 
 BASE = pathlib.Path(__file__).parent
 TOKEN = os.getenv("FOOTBALL_DATA_TOKEN", "").strip()
@@ -1122,6 +1122,18 @@ def telegram(message):
     ) as response:
         return json.load(response)
 
+def subscriber_analysis(output, panels):
+    import quickjs
+
+    context = quickjs.Context()
+    context.set_memory_limit(16 * 1024 * 1024)
+    context.set_time_limit(1)
+    context.eval(ANALYSIS_VIEW)
+    render = context.eval("(data, panels) => JSON.stringify(analysisView(JSON.parse(data), JSON.parse(panels)))")
+    view = json.loads(render(json.dumps(output), json.dumps(panels)))
+    return {"status": output["status"], "view": view}
+
+
 class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
     def end_headers(self):
         if self.membership_path:
@@ -1135,6 +1147,7 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         if cookie:
             self.send_header("Set-Cookie", cookie)
         self.end_headers()
@@ -1211,7 +1224,10 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
                     return
                 output = analyze(match)
                 CACHE[mid] = output
-                self.send(output)
+                if self.membership_path and not self.current_member["is_admin"]:
+                    self.send(subscriber_analysis(output, self.current_panels))
+                else:
+                    self.send(output)
                 return
             self.send({"error": "Bulunamadi"}, 404)
         except ValueError as exc:
