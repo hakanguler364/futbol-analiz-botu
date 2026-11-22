@@ -2,6 +2,9 @@
 """Football analysis dashboard. Python standard library only."""
 import os, json, urllib.request, urllib.parse, urllib.error, http.server, datetime, pathlib, re, time
 
+from contextlib import closing
+
+import membership
 from access import ANALYSIS_VIEW, AccessHandler, configure
 
 BASE = pathlib.Path(__file__).parent
@@ -319,6 +322,8 @@ def matches(date, league_filter=None):
                     "homeTeam": {"name": fields["CX"], "id": None, "soccerway_id": fields.get("PX")},
                     "awayTeam": {"name": fields["AF"], "id": None, "soccerway_id": fields.get("PY")},
                     "source": "Soccerway", "espn_league": league,
+                    "verified_scores": {"full": score_pair(fields.get("AG"), fields.get("AH"))}
+                    if fields.get("AB") == "3" else {},
                 })
             if found or league != "tur.2":
                 return found
@@ -337,7 +342,7 @@ def matches(date, league_filter=None):
                 ]
                 found.append({
                     "id": -uid, "utcDate": kickoff.isoformat(), "competition": {"name": "Almanya 3. Liga"},
-                    "homeTeam": teams[0], "awayTeam": teams[1], "source": "OpenLigaDB", "espn_league": league,
+                    "homeTeam": teams[0], "awayTeam": teams[1], "source": "OpenLigaDB", "espn_league": league, "verified_scores": openliga_result(event),
                 })
             return found
         # Turkey (UTC+3) calendar day overlaps two UTC calendar dates.
@@ -366,7 +371,7 @@ def matches(date, league_filter=None):
                 if not home or not away:
                     continue
                 uid = int.from_bytes(hashlib.sha256((league+str(event.get("id"))).encode()).digest()[:7], "big")
-                found.append({"id": -uid, "utcDate": kickoff, "competition": {"name": (data.get("leagues") or [{}])[0].get("name", league)}, "homeTeam": {"name": home.get("team", {}).get("displayName", "?"), "id": None, "crest": ((home.get("team", {}).get("logos") or [{}])[0].get("href"))}, "awayTeam": {"name": away.get("team", {}).get("displayName", "?"), "id": None, "crest": ((away.get("team", {}).get("logos") or [{}])[0].get("href"))}, "source": "ESPN", "espn_league": league, "espn_event_id": event.get("id"), "home_espn_id": home.get("team", {}).get("id"), "away_espn_id": away.get("team", {}).get("id")})
+                found.append({"id": -uid, "utcDate": kickoff, "competition": {"name": (data.get("leagues") or [{}])[0].get("name", league)}, "homeTeam": {"name": home.get("team", {}).get("displayName", "?"), "id": None, "crest": ((home.get("team", {}).get("logos") or [{}])[0].get("href"))}, "awayTeam": {"name": away.get("team", {}).get("displayName", "?"), "id": None, "crest": ((away.get("team", {}).get("logos") or [{}])[0].get("href"))}, "source": "ESPN", "espn_league": league, "verified_scores": espn_result(event, home, away), "espn_event_id": event.get("id"), "home_espn_id": home.get("team", {}).get("id"), "away_espn_id": away.get("team", {}).get("id")})
 
             return found
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as day_pool:
@@ -1122,13 +1127,113 @@ def telegram(message):
     ) as response:
         return json.load(response)
 
-def subscriber_analysis(output, panels):
+def score_pair(home, away):
+    values = (home, away)
+    if all(re.fullmatch(r"[0-9]+", str(value)) for value in values):
+        return tuple(map(int, values))
+    return None
+
+
+def openliga_result(event):
+    if not event.get("matchIsFinished"):
+        return {}
+    return {period: score_pair(row.get("pointsTeam1"), row.get("pointsTeam2"))
+            for row in event.get("matchResults", [])
+            for period in ("full", "half")
+            if row.get("resultTypeID") == {"full": 2, "half": 1}[period]}
+
+
+def espn_result(event, home, away):
+    status = event.get("status", {}).get("type", {})
+    if not status.get("completed") or status.get("name") != "STATUS_FULL_TIME":
+        return {}
+    full = score_pair(home.get("score"), away.get("score"))
+    first_period = [
+        next((row.get("value", row.get("displayValue")) for row in team.get("linescores", [])
+              if row.get("period") == 1), None)
+        for team in (home, away)
+    ]
+    half = score_pair(*first_period)
+    return {"full": full, "half": half if full and half and all(a <= b for a, b in zip(half, full)) else None}
+
+
+def final_scores(match):
+    if match.get("status") == "FINISHED" and match.get("score", {}).get("duration") == "REGULAR":
+        score = match["score"]
+        return {period: score_pair(*(score.get(key, {}).get(side) for side in ("home", "away")))
+                for period, key in (("full", "fullTime"), ("half", "halfTime"))}
+    return match.get("verified_scores", {})
+
+
+def recommendation_result(market, scores):
+    period = "half" if market.startswith("İY ") else "full"
+    pair = scores.get(period)
+    if pair is None:
+        return None
+    home, away = pair
+    if market in ("MS 1", "MS 0", "MS 2"):
+        actual = "MS 1" if home > away else "MS 2" if away > home else "MS 0"
+        return market == actual
+    targets = {"1,5 Üst": 2, "2,5 Üst": 3, "İY 0,5 Üst": 1, "İY 1,5 Üst": 2}
+    if market == "2,5 Alt":
+        return home + away <= 2
+    return home + away >= targets[market]
+
+
+def archive_recommendations(db_path, match, output):
+    kickoff = datetime.datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
+    if kickoff.tzinfo is None or kickoff.timestamp() <= time.time():
+        return
+    selections = analysis_context().eval(
+        "(data) => {const picks={}; analysisView(JSON.parse(data), ['system'], picks); return JSON.stringify(picks);}"
+    )(json.dumps(output))
+    captured_at = time.time()
+    if selections == "{}" or captured_at >= kickoff.timestamp():
+        return
+    day = kickoff.astimezone(datetime.timezone(datetime.timedelta(hours=3))).date().isoformat()
+    with closing(membership.connect(db_path)) as db, db:
+        db.execute(
+            """INSERT INTO recommendation_archive
+               (match_day, fixture_id, home, away, captured_at, selections)
+               VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (match_day, fixture_id) DO NOTHING""",
+            (day, str(match["id"]), output["home"], output["away"], int(captured_at), selections),
+        )
+
+
+def recommendation_report(db_path, day):
+    with closing(membership.connect(db_path)) as db:
+        archived = db.execute(
+            """SELECT fixture_id, home, away, selections FROM recommendation_archive
+               WHERE match_day=? ORDER BY captured_at, fixture_id""", (day,)
+        ).fetchall()
+    fixtures = {}
+    if archived and day <= (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3)).date().isoformat():
+        items, _ = matches(day)
+        fixtures = {str(match["id"]): final_scores(match) for match in items}
+    rows = []
+    for item in archived:
+        scores = fixtures.get(item["fixture_id"], {})
+        for market, points in json.loads(item["selections"]).items():
+            rows.append({"home": item["home"], "away": item["away"], "market": market,
+                         "points": points, "hit": recommendation_result(market, scores)})
+    hits = sum(row["hit"] is True for row in rows)
+    misses = sum(row["hit"] is False for row in rows)
+    return {"rows": rows, "hits": hits, "misses": misses, "pending": len(rows) - hits - misses,
+            "accuracy": round(100 * hits / (hits + misses), 1) if hits + misses else None}
+
+
+def analysis_context():
     import quickjs
 
     context = quickjs.Context()
     context.set_memory_limit(16 * 1024 * 1024)
     context.set_time_limit(1)
     context.eval(ANALYSIS_VIEW)
+    return context
+
+
+def subscriber_analysis(output, panels):
+    context = analysis_context()
     render = context.eval("(data, panels) => JSON.stringify(analysisView(JSON.parse(data), JSON.parse(panels)))")
     view = json.loads(render(json.dumps(output), json.dumps(panels)))
     return {"status": output["status"], "view": view}
@@ -1193,6 +1298,13 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
                 self.send({"home_rank": ranks["home"], "away_rank": ranks["away"],
                            "home_value": None, "away_value": None, "source": ranks["source"]})
                 return
+            if path == "/api/recommendation-results":
+                if not self.membership_path or "system" not in self.current_panels:
+                    self.send({"error": "Bu panel hesabınız için açık değil"}, 403)
+                    return
+                day = valid_date(urllib.parse.parse_qs(parsed.query).get("date", [""])[0])
+                self.send(recommendation_report(self.membership_path, day))
+                return
             if path == "/api/leagues":
                 self.send({"leagues": ESPN_LEAGUES})
                 return
@@ -1224,6 +1336,11 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
                     return
                 output = analyze(match)
                 CACHE[mid] = output
+                if self.membership_path and "system" in self.current_panels:
+                    try:
+                        archive_recommendations(self.membership_path, match, output)
+                    except Exception:
+                        print("RECOMMENDATION_ARCHIVE_ERROR", flush=True)
                 if self.membership_path and not self.current_member["is_admin"]:
                     self.send(subscriber_analysis(output, self.current_panels))
                 else:

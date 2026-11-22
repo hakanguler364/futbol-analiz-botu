@@ -192,6 +192,13 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 <button onclick="today()">Günlük maçları getir</button>
 </div>
 
+<section class="card" id="recommendationResults" hidden>
+<h3>Sistem Önerisi Sonuçları</h3>
+<button type="button" onclick="loadRecommendationResults()">Seçili günün sonuçlarını göster</button>
+<p id="recommendationSummary" role="status"></p>
+<ul id="recommendationRows"></ul>
+</section>
+
 <div class="cards">
 <div class="card">Toplam maç<div class="num" id="total">0</div></div>
 <div class="card">Analiz edilen<div class="num" id="analyzed">0</div></div>
@@ -240,6 +247,7 @@ String(d.getDate()).padStart(2,'0')
 }
 
 function today(){
+clearRecommendationResults();
 el('matchDate').value=localDate();
 showSelectedMatches();
 }
@@ -390,7 +398,37 @@ ${canViewPanel('teams')?'<div id="team-info-'+esc(m.id)+'" class="team-info-box"
 update();
 if(canViewPanel('teams'))filtered.forEach(m=>loadTeamInfo(m));
 }
+el('recommendationResults').hidden = !canViewPanel('system') || el('accountNav').hidden;
+let recommendationRequest = 0;
+async function loadRecommendationResults(){
+ const request = ++recommendationRequest;
+ const date = el('matchDate').value;
+ el('recommendationRows').replaceChildren();
+ el('recommendationSummary').textContent = 'Sonuçlar yükleniyor…';
+ try {
+  const report = await api('/api/recommendation-results?date='+encodeURIComponent(date));
+  if(request !== recommendationRequest || date !== el('matchDate').value) return;
+  el('recommendationSummary').textContent = date+' · '+(report.rows.length ?
+   '🟢 Tuttu '+report.hits+' · ❌ Yattı '+report.misses+' · Bekleyen '+report.pending+
+   ' · İsabet '+(report.accuracy === null ? '—' : '%'+report.accuracy.toLocaleString('tr-TR')) :
+   'Maç öncesinde kaydedilmiş oynanabilir öneri yok.');
+  for(const row of report.rows){
+   const item = document.createElement('li');
+   const status = row.hit === true ? '🟢 Tuttu' : row.hit === false ? '❌ Yattı' : 'Sonuç bekleniyor';
+   item.textContent = row.home+' - '+row.away+' · '+row.market+' · '+row.points+' puan · '+status;
+   el('recommendationRows').append(item);
+  }
+ }catch(e){
+  if(request === recommendationRequest) el('recommendationSummary').textContent='Öneri sonuçları alınamadı.';
+ }
+}
+function clearRecommendationResults(){
+ recommendationRequest++;
+ el('recommendationSummary').textContent='';
+ el('recommendationRows').replaceChildren();
+}
 async function load(){
+ clearRecommendationResults();
  const picker=el('leagueFilter'),old=selectedLeagues();
  el('mode').textContent='Lig seçimi hazır';
  el('matches').textContent='Önce ligi seçin, sonra Seçilen maçları getir düğmesine basın.';

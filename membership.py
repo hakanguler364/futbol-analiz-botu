@@ -108,6 +108,15 @@ def initialize(db):
     CREATE TABLE IF NOT EXISTS pending_members (
         member_id INTEGER PRIMARY KEY REFERENCES members(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS recommendation_archive (
+        match_day TEXT NOT NULL,
+        fixture_id TEXT NOT NULL,
+        home TEXT NOT NULL,
+        away TEXT NOT NULL,
+        captured_at INTEGER NOT NULL,
+        selections TEXT NOT NULL,
+        PRIMARY KEY (match_day, fixture_id)
+    );
     """
     if isinstance(db, PostgresConnection):
         db.execute("SELECT pg_advisory_xact_lock(61539001)")
