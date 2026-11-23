@@ -627,9 +627,20 @@ el('details').textContent=e.message;
 update();
 }
 
+let pendingMatchLoad;
 async function showSelectedMatches(){
 const leagues=selectedLeagues(),date=el('matchDate').value;
 if(!date){alert('Önce tarih seçin');return;}
+const key=JSON.stringify([date,[...leagues].sort()]);
+if(pendingMatchLoad?.key===key)return pendingMatchLoad.promise;
+const promise=fetchSelectedMatches(leagues,date);
+const request={key,promise};
+pendingMatchLoad=request;
+try{await promise;}
+finally{if(pendingMatchLoad===request)pendingMatchLoad=undefined;}
+}
+
+async function fetchSelectedMatches(leagues,date){
 const current=++runId;done=ok=bad=0;results={};renderedAnalyses={};predictionScores={};games=[];update();
 el('total').textContent='—';
 el('progress').textContent='Maçlar yükleniyor…';
