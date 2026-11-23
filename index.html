@@ -566,8 +566,10 @@ async function load(){
 }
 
 async function analyze(id){
+const analysisRun=runId;
 try{
 const r=await api('/api/analyze/'+id);
+if(analysisRun!==runId)return;
 if(!results[id]){
 done++;
 if(r.status==='complete')ok++;
@@ -614,6 +616,7 @@ const h2h=!h?'İkili rekabet: Veri alınamadı':('İkili rekabet — bulunan '+h
 el('details').textContent=h2h+'\n\n'+fmt(r.home,r.sections?.home_last5)+'\n\n'+fmt(r.away,r.sections?.away_last5)+'\n\nDiğer analiz alanları henüz tamamlanmadı.';
 }catch(e){
 if(!results[id]){done++;bad++;}
+if(analysisRun!==runId)return;
 results[id]={error:e.message};
 recordLeagueHealth(games.find(m=>String(m.id)===String(id)),null);
 const failedNode=el('state-'+id);if(failedNode)failedNode.textContent=' ✕ '+e.message;
@@ -632,6 +635,29 @@ try{
 const controller=new AbortController();
 const timeout=setTimeout(()=>controller.abort(),45000);
 const byId=new Map();
+const queued=new Set();
+const queue=[];
+let active=0;
+let loading=true;
+function pumpAnalyses(){
+ if(current!==runId)return;
+ while(active<3 && queue.length){
+  const match=queue.shift();
+  if(results[match.id])continue;
+  active++;
+  const node=el('state-'+match.id);
+  if(node)node.textContent='⏳ Analiz yapılıyor...';
+  analyze(match.id).finally(()=>{
+   active--;
+   pumpAnalyses();
+  });
+ }
+ if(active || queue.length || loading){
+  el('progress').textContent=done+'/'+queued.size+' maç işlendi'+(loading?' · Maç listesi yükleniyor':'');
+ }else{
+  el('progress').textContent=done+'/'+queued.size+' maç işlendi';
+ }
+}
 let responses;
 try{
  responses=await Promise.allSettled((leagues.length?leagues:[null]).map(async league=>{
@@ -642,15 +668,21 @@ try{
   update();
   el('mode').textContent='Maç verileri — '+date;
   renderGames();
+  for(const match of selectedMatches()){
+   if(queued.has(match.id))continue;
+   queued.add(match.id);
+   queue.push(match);
+  }
+  pumpAnalyses();
  }));
 }finally{clearTimeout(timeout);}
 if(current!==runId)return;
 const failed=responses.filter(response=>response.status==='rejected');
 if(failed.length===responses.length)throw failed[0].reason;
 if(!games.length){el('matches').textContent=leagues.length?'Seçilen liglerde bugün maç bulunamadı veya veri kaynağından veri alınamadı.':'Bu tarihte maç bulunamadı.';return;}
-el('progress').textContent=games.length+' maç listelendi; ayrıntılı analizler arka planda hazırlanıyor.';
+loading=false;
+pumpAnalyses();
 if(failed.length)el('mode').textContent+=' · '+failed.length+' lig yüklenemedi';
-setTimeout(()=>{if(current===runId)analyzeAll().catch(err=>{el('progress').textContent='Analiz hatası: '+err.message;});},0);
 }catch(e){if(current===runId)el('matches').textContent=e.name==='AbortError'?'Maç verisi 45 saniyede alınamadı. Sunucu veya veri sağlayıcısı yanıt vermiyor; yeniden deneyin.':'Veri bulunamadı: '+e.message;}
 }
 
