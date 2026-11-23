@@ -1294,7 +1294,7 @@ def refresh_recommendation_scores(day, archived):
                     half = None
             scores = dict(scores, half=half)
         scores_by_id[fixture_id] = scores
-    return scores_by_id, kickoff_by_id
+    return scores_by_id, kickoff_by_id, len(updated if require_full_refresh else items)
 
 
 def recommendation_report(db_path, day):
@@ -1306,20 +1306,29 @@ def recommendation_report(db_path, day):
     scores_by_id, kickoff_by_id = {}, {}
     if archived and day <= (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3)).date().isoformat():
         with RESULT_REFRESH_LOCKS.setdefault(day, Lock()):
-            scores_by_id, kickoff_by_id = refresh_recommendation_scores(day, archived)
+            scores_by_id, kickoff_by_id, total_matches = refresh_recommendation_scores(day, archived)
+    else:
+        fixtures, _ = matches(day)
+        total_matches = len(fixtures)
     rows = []
+    predicted_matches = 0
     for item in archived:
         fixture_id = item["fixture_id"]
         scores = scores_by_id.get(fixture_id, {})
-        for market, points in json.loads(item["selections"]).items():
+        selections = json.loads(item["selections"])
+        outcomes = {market: recommendation_result(market, scores) for market in selections}
+        if selections:
+            predicted_matches += 1
+        for market, points in selections.items():
             rows.append({"home": item["home"], "away": item["away"], "market": market,
                          "kickoff": kickoff_by_id.get(fixture_id),
-                         "points": points, "hit": recommendation_result(market, scores),
+                         "points": points, "hit": outcomes[market],
                          "full_score": scores.get("full"), "half_score": scores.get("half")})
     hits = sum(row["hit"] is True for row in rows)
     misses = sum(row["hit"] is False for row in rows)
     return {"rows": rows, "hits": hits, "misses": misses, "pending": len(rows) - hits - misses,
-            "accuracy": round(100 * hits / (hits + misses), 1) if hits + misses else None}
+            "accuracy": round(100 * hits / (hits + misses), 1) if hits + misses else None,
+            "total_matches": total_matches, "predicted_matches": predicted_matches}
 
 
 def analysis_context():

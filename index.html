@@ -442,22 +442,33 @@ async function loadRecommendationResults(manual = false){
   const report = await api('/api/recommendation-results?date='+encodeURIComponent(date), {signal:controller.signal});
   if(request !== recommendationRequest || date !== el('matchDate').value) return;
   keepPolling = keepPolling && (report.pending > 0 || date === localDate());
-  summary.textContent = date+' · '+(report.rows.length ?
-   'İsabet '+(report.accuracy === null ? '—' : '%'+report.accuracy.toLocaleString('tr-TR')) :
-   'Maç öncesinde kaydedilmiş oynanabilir öneri yok.');
-  if(report.rows.length){
+  const total = report.rows.length;
+  const title = document.createElement('strong');
+  title.textContent = 'Toplam tahmin sayısı: '+total;
+  const coverage = document.createElement('div');
+  coverage.className = 'muted';
+  coverage.textContent = date+' · Programdaki maç: '+(report.total_matches || '—')+' · Tahmin verilen maç: '+report.predicted_matches;
+  summary.replaceChildren(title, coverage);
+  if(total){
+   const {hits, misses, pending} = report;
+   const format = new Intl.NumberFormat('tr-TR', {maximumFractionDigits:1});
    const totals = document.createElement('div');
    totals.className = 'recommendation-totals';
-   for(const [label,count,state] of [['✓ Tuttu',report.hits,'hit'],['✕ Yattı',report.misses,'miss'],['Bekleyen',report.pending,'pending']]){
+   for(const [label,count,state] of [['✓ Tuttu',hits,'hit'],['✕ Yattı',misses,'miss'],['Bekleyen',pending,'pending']]){
     const box = document.createElement('div');
     box.className = 'recommendation-total recommendation-'+state;
     box.textContent = label;
     const number = document.createElement('strong');
     number.textContent = count;
     box.append(number);
+    const percentage = document.createElement('span');
+    percentage.textContent = '%'+format.format(100 * count / total);
+    box.append(percentage);
     totals.append(box);
    }
    summary.append(totals);
+  }else{
+   summary.append('Maç öncesinde kaydedilmiş oynanabilir öneri yok.');
   }
   const rows = document.createDocumentFragment();
   for(const row of report.rows){
