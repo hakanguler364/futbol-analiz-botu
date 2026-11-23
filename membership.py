@@ -280,4 +280,4 @@ def online_count(db):
           AND m.is_admin=0 AND m.blocked=0
           AND (m.expires_at IS NULL OR m.expires_at > ?)
           AND NOT EXISTS (SELECT 1 FROM pending_members p WHERE p.member_id=m.id)
-        """, (now - 120, now, now)).fetchone()["total"]
+        """, (now - 300, now, now)).fetchone()["total"]
