@@ -1222,6 +1222,21 @@ def archive_recommendations(db_path, match, output):
         )
 
 
+# Verified historical scores for fixtures whose provider omitted the halftime score.
+VERIFIED_HISTORICAL_SCORES = {
+    # https://www.inter.it/en/match_center/5381
+    ("2026-11-22", "atalanta", "internazionale"): {"full": (4, 4), "half": (1, 2)},
+    # https://www.directvsports.com/futbol/en-vivo-primer-tiempo-finalizado-sport-huancayo-se-impone-3-0-sobre-universitario-20261119-0031.html
+    ("2026-11-22", "sporthuancayo", "universitario"): {"full": (4, 1), "half": (3, 0)},
+}
+
+
+def recommendation_scores(day, item, scores):
+    key = (day, team_match_key(item["home"]), team_match_key(item["away"]))
+    confirmed = VERIFIED_HISTORICAL_SCORES.get(key)
+    return merge_final_scores(scores, confirmed) if confirmed else scores
+
+
 def refresh_recommendation_scores(day, archived):
     def index_fixtures(items):
         return {
@@ -1237,7 +1252,7 @@ def refresh_recommendation_scores(day, archived):
     for item in archived:
         fixture_id = item["fixture_id"]
         match = fixtures.get(fixture_id, {})
-        scores = final_scores(match)
+        scores = recommendation_scores(day, item, final_scores(match))
         if all(recommendation_result(market, scores) is not None for market in json.loads(item["selections"])):
             continue
         league = match.get("espn_league")
@@ -1259,6 +1274,23 @@ def refresh_recommendation_scores(day, archived):
             match = fresh.get(fixture_id) or fresh.get(str(old.get("id")))
             if match:
                 scores_by_id[fixture_id] = merge_final_scores(final_scores(match), scores_by_id.get(fixture_id, {}))
+    for item in archived:
+        fixture_id = item["fixture_id"]
+        scores = recommendation_scores(day, item, scores_by_id.get(fixture_id, {}))
+        match = fixtures.get(fixture_id, {})
+        if (scores.get("full") and not scores.get("half")
+                and any(market.startswith("İY ") for market in json.loads(item["selections"]))
+                and match.get("espn_event_id") and match.get("home_espn_id")):
+            cache_key = ("recommendation_halftime", match["espn_event_id"], scores["full"])
+            half = CACHE.get(cache_key)
+            if half is None:
+                half = espn_halftime_scores(match["espn_league"], match["espn_event_id"], match["home_espn_id"])
+                if half and all(a <= b for a, b in zip(half, scores["full"])):
+                    CACHE[cache_key] = half
+                else:
+                    half = None
+            scores = dict(scores, half=half)
+        scores_by_id[fixture_id] = scores
     return scores_by_id
 
 
