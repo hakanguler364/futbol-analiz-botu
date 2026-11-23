@@ -11,6 +11,9 @@
 <form id="access-form">
   <label for="phone">Telefon numarası</label>
   <input id="phone" type="tel" autocomplete="username" required maxlength="25">
+  <label for="display-name">İsim (isteğe bağlı)</label>
+  <input id="display-name" type="text" maxlength="80" aria-describedby="name-help">
+  <small id="name-help">Takma ad kullanabilirsiniz. Yalnızca yönetici görür.</small>
   <label for="password">Şifre</label>
   <input id="password" type="password" autocomplete="current-password" required maxlength="256">
   <button type="submit" id="submit">Giriş yap</button>
@@ -43,7 +46,8 @@ form.onsubmit = async (event) => {
     const response = await fetch(registering ? '/auth/register' : '/auth/login', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Futbol-Request': '1'},
-      body: JSON.stringify({phone: phone.value, password: password.value})
+      body: JSON.stringify({phone: phone.value, password: password.value,
+                            display_name: document.querySelector('#display-name').value})
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error);

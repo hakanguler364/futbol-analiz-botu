@@ -5,10 +5,15 @@
 <title>Üyeler · Futbol Analiz</title>
 <style>
 :root{color-scheme:dark}body{margin:0;background:#101b2c;color:#f0f5ff;font:1rem system-ui}main{width:min(45rem,calc(100% - 2rem));margin:2rem auto}a{color:#b4e0ff}h1{font-size:1.55rem}ul{list-style:none;padding:0}li{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin:.6rem 0;padding:.8rem;background:#192b43;border:1px solid #42607c;border-radius:.6rem}button{font:inherit;padding:.5rem;border-radius:.4rem;cursor:pointer}
+.online{padding:1rem;background:#192b43;border:1px solid #42607c;border-radius:.6rem}.online p{margin:.4rem 0 0}
 </style>
 <main>
 <a href="/">Analiz merkezine dön</a>
 <h1>Üyeler</h1>
+<section class="online">
+  <strong>Çevrimiçi üye</strong> <span id="onlineCount">Yükleniyor…</span>
+  <p>Son 2 dakikada aktif olan üyeler</p>
+</section>
 <section style="margin:1.5rem 0;padding:1rem;background:#192b43;border:1px solid #42607c;border-radius:.6rem">
 <h2>Abonelerin görebileceği analizler</h2>
 <p>İşaretli kutular abonelere gösterilir. Ayarlar sunucuya kaydedilir.</p>
@@ -105,7 +110,7 @@ async function loadMembers() {
     const expired = member.expires_at !== null && member.expires_at * 1000 <= Date.now();
     const status = member.is_admin ? 'Yönetici' : member.blocked ? 'Kapalı' :
       member.pending ? 'Onay bekliyor' : expired ? 'Süresi doldu' : 'Açık';
-    label.textContent = member.phone + ' · ' + status;
+    label.textContent = (member.display_name ? member.display_name + ' · ' : '') + member.phone + ' · ' + status;
     row.append(label);
     if (!member.is_admin) {
       const action = member.blocked || expired ? 'open' : member.pending ? 'approve' : 'block';
@@ -142,6 +147,18 @@ async function loadMembers() {
     list.append(row);
   }
 }
+
+async function refreshOnline() {
+  const counter = document.querySelector('#onlineCount');
+  try {
+    const {count} = await request('/auth/online');
+    counter.textContent = count;
+  } catch {
+    counter.textContent = 'Sayı alınamadı';
+  }
+}
+refreshOnline();
+setInterval(refreshOnline, 15000);
 
 loadMembers().catch(error => {message.textContent = error.message;});
 </script>

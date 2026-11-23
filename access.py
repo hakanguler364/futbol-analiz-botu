@@ -105,6 +105,15 @@ class AccessHandler:
                 except (ValueError, TypeError, AttributeError):
                     self.send({"error": "Geçersiz istek"}, 400)
                 return True
+            if method == "GET" and path == "/auth/presence":
+                self.send({"ok": True})
+                return True
+            if method == "GET" and path == "/auth/online":
+                if member["is_admin"]:
+                    self.send({"count": membership.online_count(db)})
+                else:
+                    self.send({"error": "Yönetici yetkisi gerekiyor"}, 403)
+                return True
             if method == "GET" and path == "/auth/members":
                 if member["is_admin"]:
                     self.send({"members": membership.members(db)})
@@ -146,10 +155,12 @@ class AccessHandler:
                     return
                 membership.limit_attempts(db)
                 if path == "/auth/register":
-                    membership.create_member(db, data.get("phone"), data.get("password"), pending=True)
+                    membership.create_member(db, data.get("phone"), data.get("password"), pending=True,
+                                             display_name=data.get("display_name"))
                     self.send({"message": "Yeni hesaplar yönetici onayından sonra açılır."}, 202)
                     return
-                token = membership.login(db, data.get("phone"), data.get("password"))
+                token = membership.login(db, data.get("phone"), data.get("password"),
+                                         data.get("display_name"))
                 self.send({"ok": True}, cookie=self.session_cookie(token, membership.SESSION_SECONDS))
         except PermissionError as exc:
             self.send({"error": str(exc)}, 403)
@@ -191,6 +202,14 @@ class AccessHandler:
                 body = body.replace(b"/* ENABLED_PANELS */ null", panels)
         if filename == "index.html" and self.membership_path:
             body = body.replace(b'id="accountNav" hidden', b'id="accountNav"')
+            if not self.current_member["is_admin"]:
+                body += b"""<script>
+function reportPresence() {
+    if (!document.hidden) fetch('/auth/presence').catch(() => {});
+}
+setInterval(reportPresence, 45000);
+document.addEventListener('visibilitychange', reportPresence);
+</script>"""
             if self.current_member["is_admin"]:
                 body = body.replace(b'href="/admin" hidden', b'href="/admin"')
         self.send_response(200)

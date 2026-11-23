@@ -130,16 +130,30 @@ def initialize(db):
     else:
         db.executescript(schema)
 
+    if isinstance(db, PostgresConnection):
+        db.execute("ALTER TABLE members ADD COLUMN IF NOT EXISTS display_name TEXT")
+    elif not any(row["name"] == "display_name" for row in db.execute("PRAGMA table_info(members)")):
+        db.execute("ALTER TABLE members ADD COLUMN display_name TEXT")
 
-def create_member(db, phone, password, *, admin=False, days=None, pending=False):
+
+def normalize_name(name):
+    if name is None:
+        return None
+    if not isinstance(name, str) or len(name) > 80:
+        raise ValueError("İsim en fazla 80 karakter olabilir")
+    return name.strip() or None
+
+
+def create_member(db, phone, password, *, admin=False, days=None, pending=False, display_name=None):
     phone = normalize_phone(phone)
+    display_name = normalize_name(display_name)
     if days is not None and not 1 <= int(days) <= 3650:
         raise ValueError("Gün sayısı 1-3650 arasında olmalı")
     now = int(time.time())
     cursor = db.execute(
-        """INSERT INTO members(phone,password_hash,is_admin,expires_at,created_at) VALUES(?,?,?,?,?)
+        """INSERT INTO members(phone,password_hash,is_admin,expires_at,created_at,display_name) VALUES(?,?,?,?,?,?)
         ON CONFLICT(phone) DO NOTHING RETURNING id""",
-        (phone, password_hash(password), int(admin), None if admin or days is None else now + int(days)*86400, now))
+        (phone, password_hash(password), int(admin), None if admin or days is None else now + int(days)*86400, now, display_name))
     row = cursor.fetchone()
     if row is None:
         db.commit()
@@ -172,7 +186,7 @@ def reset_password(db, member_id, password):
     db.execute("DELETE FROM sessions WHERE member_id=?", (member_id,))
 
 
-def login(db, phone, password):
+def login(db, phone, password, display_name=None):
     phone = normalize_phone(phone)
     member = db.execute("SELECT * FROM members WHERE phone=?", (phone,)).fetchone()
     # Equalize nonexistent-account work; do not reveal which phone numbers exist.
@@ -188,8 +202,8 @@ def login(db, phone, password):
     if member["blocked"] or (not member["is_admin"] and member["expires_at"] is not None and member["expires_at"] <= now):
         raise PermissionError("Üyelik kapalı veya süresi dolmuş")
     updated = db.execute(
-        "UPDATE members SET login_count=login_count+1,last_seen=? WHERE id=? AND password_hash=?",
-        (now, member["id"], member["password_hash"]),
+        "UPDATE members SET login_count=login_count+1,last_seen=?,display_name=COALESCE(?,display_name) WHERE id=? AND password_hash=?",
+        (now, normalize_name(display_name), member["id"], member["password_hash"]),
     )
     if updated.rowcount != 1:
         raise ValueError("Telefon veya şifre hatalı")
@@ -252,7 +266,18 @@ def approve(db, member_id):
 
 
 def members(db):
-    return [dict(row) for row in db.execute("""SELECT id,phone,is_admin,blocked,
+    return [dict(row) for row in db.execute("""SELECT id,phone,display_name,is_admin,blocked,
         expires_at,created_at,last_seen,login_count,analysis_count,active_seconds,
         EXISTS(SELECT 1 FROM pending_members WHERE member_id=members.id) AS pending
         FROM members ORDER BY id""")]
+
+
+def online_count(db):
+    now = int(time.time())
+    return db.execute("""SELECT COUNT(DISTINCT s.member_id) AS total
+        FROM sessions s JOIN members m ON m.id=s.member_id
+        WHERE s.last_seen > ? AND s.expires_at > ?
+          AND m.is_admin=0 AND m.blocked=0
+          AND (m.expires_at IS NULL OR m.expires_at > ?)
+          AND NOT EXISTS (SELECT 1 FROM pending_members p WHERE p.member_id=m.id)
+        """, (now - 120, now, now)).fetchone()["total"]
