@@ -252,7 +252,7 @@ const leagueTR={
 'FIFA World Cup':'FIFA Dünya Kupası','International Friendly':'Hazırlık Maçı',
 'Major League Soccer':'ABD MLS','Brazilian Serie A':'Brezilya Serie A','Argentine Liga Profesional de Fútbol':'Arjantin 1. Lig'
 };
-function kickoffTR(value){if(!value)return 'Saat bilinmiyor';const d=new Date(value);return Number.isNaN(d.getTime())?'Saat bilinmiyor':new Intl.DateTimeFormat('tr-TR',{timeZone:'Europe/Istanbul',hour:'2-digit',minute:'2-digit',hour12:false}).format(d);}
+function kickoffTR(value, fallback='Saat bilinmiyor'){if(!value)return fallback;const d=new Date(value);return Number.isNaN(d.getTime())?fallback:new Intl.DateTimeFormat('tr-TR',{timeZone:'Europe/Istanbul',hour:'2-digit',minute:'2-digit',hour12:false}).format(d);}
 function trLeague(name){const raw=String(name||'Bilinmeyen lig');return leagueTR[raw]||raw.replace(/^Turkish /,'Türkiye ').replace(/^English /,'İngiltere ').replace(/^Spanish /,'İspanya ').replace(/^German /,'Almanya ').replace(/^Italian /,'İtalya ').replace(/^French /,'Fransa ').replace(/^Portuguese /,'Portekiz ').replace(/^Dutch /,'Hollanda ').replace(/^Belgian /,'Belçika ').replace(/^Scottish /,'İskoçya ').replace(/^Brazilian /,'Brezilya ').replace(/^Argentine /,'Arjantin ').replace(/^Saudi /,'Suudi Arabistan ').replace(/^Japanese /,'Japonya ').replace(/^Korean /,'Güney Kore ').replace(/^Australian /,'Avustralya ');}
 function localDate(){
 const d=new Date();
@@ -465,7 +465,7 @@ async function loadRecommendationResults(manual = false){
    const details = document.createElement('span');
    details.className = 'recommendation-match';
    const kickoff = document.createElement('strong');
-   kickoff.textContent = kickoffTR(row.kickoff);
+   kickoff.textContent = kickoffTR(row.kickoff, '--:--');
    details.append(kickoff, ' · '+row.home+' - '+row.away+' · '+row.market+' · '+row.points+' puan');
    const scores = document.createElement('span');
    scores.className = 'recommendation-scores';
