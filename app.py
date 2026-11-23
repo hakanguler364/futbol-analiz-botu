@@ -409,7 +409,9 @@ def matches(date, league_filter=None):
                 continue
             kickoff = (event.get("strTimestamp") or ((event.get("dateEvent") or date) + "T" + (event.get("strTime") or "00:00:00") + "Z"))
             uid = int.from_bytes(hashlib.sha256(("sportsdb"+str(event.get("idEvent"))).encode()).digest()[:7], "big")
-            out.append({"id": -uid, "utcDate": kickoff, "competition": {"name": event.get("strLeague") or "Other"}, "homeTeam": {"name": home, "id": None, "crest": event.get("strHomeTeamBadge")}, "awayTeam": {"name": away, "id": None, "crest": event.get("strAwayTeamBadge")}, "source": "TheSportsDB", "sportsdb_event_id": event.get("idEvent")})
+            status = str(event.get("strStatus") or "").strip().casefold()
+            scores = {"full": score_pair(event.get("intHomeScore"), event.get("intAwayScore"))} if status in {"match finished", "ft", "full time"} else {}
+            out.append({"verified_scores": scores, "id": -uid, "utcDate": kickoff, "competition": {"name": event.get("strLeague") or "Other"}, "homeTeam": {"name": home, "id": None, "crest": event.get("strHomeTeamBadge")}, "awayTeam": {"name": away, "id": None, "crest": event.get("strAwayTeamBadge")}, "source": "TheSportsDB", "sportsdb_event_id": event.get("idEvent")})
         return out
     try:
         # Keep the independent feed available for a specifically selected Turkish league.
@@ -426,22 +428,13 @@ def matches(date, league_filter=None):
             extra_events = [event for event in extra_events if is_requested_turkish_league(event)]
             for event in extra_events:
                 event["espn_league"] = league_filter
-        existing = {(m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold()) for m in items}
-        for m in extra_events:
-            pair = (m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold())
-            if pair not in existing:
-                items.append(m)
-                existing.add(pair)
+        items.extend(extra_events)
     except Exception as exc:
         print("SPORTSDB_FIXTURE_ERROR " + str(exc)[:180], flush=True)
     if TOKEN and not league_filter:
         try:
             extra = fetch("/matches?" + urllib.parse.urlencode({"dateFrom": date, "dateTo": date})).get("matches", [])
-            existing = {(m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold()) for m in items}
-            for m in extra:
-                pair = (m["homeTeam"]["name"].casefold(), m["awayTeam"]["name"].casefold())
-                if pair not in existing:
-                    items.append(m)
+            items.extend(extra)
         except Exception:
             pass
     # Do not invent fixtures when official providers return no events.
@@ -531,8 +524,11 @@ def matches(date, league_filter=None):
                               "source": "TheSportsDB", "utcDate": candidate["utcDate"]}
                     old["sportsdb_fallback_match"] = backup
                     m["sportsdb_fallback_match"] = backup
-            if fixture_quality(m) > fixture_quality(old):
-                merged[found] = m
+            primary, secondary = (m, old) if fixture_quality(m) > fixture_quality(old) else (old, m)
+            ids = {*old.get("fixture_aliases", []), *m.get("fixture_aliases", []), old["id"], m["id"]}
+            primary["fixture_aliases"] = sorted(ids - {primary["id"]})
+            primary["merged_scores"] = merge_final_scores(final_scores(primary), final_scores(secondary))
+            merged[found] = primary
     items = list(merged.values())
     items.sort(key=lambda m: m.get("utcDate") or "")
     from collections import Counter
@@ -1142,8 +1138,8 @@ def telegram(message):
 
 def score_pair(home, away):
     values = (home, away)
-    if all(re.fullmatch(r"[0-9]+", str(value)) for value in values):
-        return tuple(map(int, values))
+    if all(re.fullmatch(r"[0-9]+(?:\.0+)?", str(value)) for value in values):
+        return tuple(int(str(value).split(".")[0]) for value in values)
     return None
 
 
@@ -1170,7 +1166,17 @@ def espn_result(event, home, away):
     return {"full": full, "half": half if full and half and all(a <= b for a, b in zip(half, full)) else None}
 
 
+def merge_final_scores(primary, secondary):
+    full = primary.get("full") or secondary.get("full")
+    half = primary.get("half")
+    if not half and secondary.get("full") == full:
+        half = secondary.get("half")
+    return {"full": full, "half": half if full and half and all(a <= b for a, b in zip(half, full)) else None}
+
+
 def final_scores(match):
+    if "merged_scores" in match:
+        return match["merged_scores"]
     if match.get("status") == "FINISHED" and match.get("score", {}).get("duration") == "REGULAR":
         score = match["score"]
         return {period: score_pair(*(score.get(key, {}).get(side) for side in ("home", "away")))
@@ -1222,7 +1228,10 @@ def recommendation_report(db_path, day):
     fixtures = {}
     if archived and day <= (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3)).date().isoformat():
         items, _ = matches(day)
-        fixtures = {str(match["id"]): final_scores(match) for match in items}
+        for match in items:
+            scores = final_scores(match)
+            for fixture_id in (match["id"], *match.get("fixture_aliases", [])):
+                fixtures[str(fixture_id)] = scores
     rows = []
     for item in archived:
         scores = fixtures.get(item["fixture_id"], {})
