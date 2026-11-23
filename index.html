@@ -224,7 +224,7 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 </section>
 
 <div class="cards">
-<div class="card">Toplam maç<div class="num" id="total">0</div></div>
+<div class="card">Toplam maç<div class="num" id="total">—</div></div>
 <div class="card">Analiz edilen<div class="num" id="analyzed">0</div></div>
 <div class="card">Tamamlanan<div class="num" id="success">0</div></div>
 <div class="card">Hatalı / eksik<div class="num" id="failed">0</div></div>
@@ -629,6 +629,8 @@ async function showSelectedMatches(){
 const leagues=selectedLeagues(),date=el('matchDate').value;
 if(!date){alert('Önce tarih seçin');return;}
 const current=++runId;done=ok=bad=0;results={};renderedAnalyses={};predictionScores={};games=[];update();
+el('total').textContent='—';
+el('progress').textContent='Maçlar yükleniyor…';
 el('matches').textContent='Seçilen liglerin maçları yükleniyor...';
 for(const league of leagues)leagueHealth[league]='unknown';paintLeagueHealth();
 try{
@@ -679,11 +681,16 @@ try{
 if(current!==runId)return;
 const failed=responses.filter(response=>response.status==='rejected');
 if(failed.length===responses.length)throw failed[0].reason;
-if(!games.length){el('matches').textContent=leagues.length?'Seçilen liglerde bugün maç bulunamadı veya veri kaynağından veri alınamadı.':'Bu tarihte maç bulunamadı.';return;}
+if(!games.length){
+ el('total').textContent=failed.length?'—':'0';
+ el('progress').textContent=failed.length?'Maç listesi eksik yüklendi.':'Maç bulunamadı.';
+ el('matches').textContent=failed.length?'Yanıt veren liglerde maç bulunamadı. Bazı ligler yüklenemedi.':'Seçilen tarihte maç bulunamadı.';
+ return;
+}
 loading=false;
 pumpAnalyses();
 if(failed.length)el('mode').textContent+=' · '+failed.length+' lig yüklenemedi';
-}catch(e){if(current===runId)el('matches').textContent=e.name==='AbortError'?'Maç verisi 45 saniyede alınamadı. Sunucu veya veri sağlayıcısı yanıt vermiyor; yeniden deneyin.':'Veri bulunamadı: '+e.message;}
+}catch(e){if(current===runId){el('progress').textContent='Maç listesi yüklenemedi.';el('matches').textContent=e.name==='AbortError'?'Maç verisi 45 saniyede alınamadı. Sunucu veya veri sağlayıcısı yanıt vermiyor; yeniden deneyin.':'Veri bulunamadı: '+e.message;}}
 }
 
 async function analyzeAll(){
