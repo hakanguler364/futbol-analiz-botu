@@ -350,12 +350,25 @@ def matches(date, league_filter=None):
         def fetch_day(utc_day):
             found = []
             url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + utc_day + "&limit=500"
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-            try:
-                with urllib.request.urlopen(req, timeout=8) as response:
-                    data = json.load(response)
-            except Exception as exc:
-                print("FIXTURE_PROVIDER_ERROR " + json.dumps({"league": league, "day": utc_day, "error": str(exc)[:180]}), flush=True)
+            # Some ESPN competitions reject the optional limit parameter with HTTP 400.
+            # Retry once with the documented date-only query before marking a league unavailable.
+            data = None
+            last_error = None
+            for candidate_url in (url, url.split("&limit=", 1)[0]):
+                req = urllib.request.Request(candidate_url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+                try:
+                    with urllib.request.urlopen(req, timeout=8) as response:
+                        data = json.load(response)
+                    break
+                except urllib.error.HTTPError as exc:
+                    last_error = exc
+                    if exc.code != 400:
+                        break
+                except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+                    last_error = exc
+                    break
+            if data is None:
+                print("FIXTURE_PROVIDER_ERROR " + json.dumps({"league": league, "day": utc_day, "error": str(last_error)[:180]}), flush=True)
                 return found
             for event in data.get("events", []):
                 kickoff = event.get("date", "")
