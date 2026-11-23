@@ -3,6 +3,7 @@
 import os, json, urllib.request, urllib.parse, urllib.error, http.server, datetime, pathlib, re, time
 
 from contextlib import closing
+from threading import Lock
 
 import membership
 from access import ANALYSIS_VIEW, AccessHandler, configure
@@ -13,6 +14,8 @@ TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TG_CHAT = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 CACHE = {}
 MATCH_CACHE = {}
+RESULT_REFRESH_SECONDS = 30
+RESULT_REFRESH_LOCKS = {}
 
 def fetch(path):
     if not TOKEN:
@@ -173,11 +176,11 @@ SOCCERWAY_LEAGUES.update({
 })
 ESPN_LEAGUES.extend(league for league in SOCCERWAY_LEAGUES if league not in ESPN_LEAGUES)
 
-def openliga_season(kickoff):
+def openliga_season(kickoff, *, max_age=300):
     season = kickoff.year - (kickoff.month < 7)
     key = ("openligadb", season)
     cached = CACHE.get(key)
-    if cached and time.time() - cached["time"] < 300:
+    if cached and time.time() - cached["time"] < max_age:
         return cached["result"]
     with urllib.request.urlopen(
         f"https://api.openligadb.de/getmatchdata/bl3/{season}", timeout=8
@@ -234,11 +237,11 @@ def summarize_team_games(rows, side):
     }
 
 
-def soccerway_events(league):
+def soccerway_events(league, *, max_age=300):
     _, groups = SOCCERWAY_LEAGUES[league]
     key = ("soccerway", league)
     cached = CACHE.get(key)
-    if cached and time.time() - cached["time"] < 300:
+    if cached and time.time() - cached["time"] < max_age:
         return cached["events"]
     events = {}
     for group in groups:
@@ -299,13 +302,13 @@ def soccerway_recent(match, side):
     return summarize_team_games(rows, side)
 
 
-def matches(date, league_filter=None):
+def matches(date, league_filter=None, *, max_age=300):
     if league_filter and league_filter not in ESPN_LEAGUES:
         raise ValueError('Gecersiz lig secimi')
     date = valid_date(date)
     cache_key = date + ':' + (league_filter or 'all')
     cached = MATCH_CACHE.get(cache_key)
-    if cached and time.time() - cached["time"] < 300:
+    if cached and time.time() - cached["time"] < max_age:
         return cached["matches"], False
     import concurrent.futures, hashlib
     leagues = ESPN_LEAGUES if not league_filter else [league_filter]
@@ -313,7 +316,7 @@ def matches(date, league_filter=None):
         if league in SOCCERWAY_LEAGUES:
             name, _ = SOCCERWAY_LEAGUES[league]
             found = []
-            for (group, event_id), (kickoff, fields) in soccerway_events(league).items():
+            for (group, event_id), (kickoff, fields) in soccerway_events(league, max_age=max_age).items():
                 if (kickoff + datetime.timedelta(hours=3)).date().isoformat() != date:
                     continue
                 uid = int.from_bytes(hashlib.sha256(f"soccerway:{group}:{event_id}".encode()).digest()[:7], "big")
@@ -329,7 +332,7 @@ def matches(date, league_filter=None):
                 return found
         if league == "ger.3":
             selected_day = datetime.date.fromisoformat(date)
-            events = openliga_season(selected_day)
+            events = openliga_season(selected_day, max_age=max_age)
             found = []
             for event in events:
                 kickoff = datetime.datetime.fromisoformat(event["matchDateTimeUTC"].replace("Z", "+00:00"))
@@ -1219,6 +1222,46 @@ def archive_recommendations(db_path, match, output):
         )
 
 
+def refresh_recommendation_scores(day, archived):
+    def index_fixtures(items):
+        return {
+            str(fixture_id): match
+            for match in items
+            for fixture_id in (match["id"], *match.get("fixture_aliases", []))
+        }
+
+    items, _ = matches(day)
+    fixtures = index_fixtures(items)
+    by_league = {}
+    require_full_refresh = False
+    for item in archived:
+        fixture_id = item["fixture_id"]
+        match = fixtures.get(fixture_id, {})
+        scores = final_scores(match)
+        if all(recommendation_result(market, scores) is not None for market in json.loads(item["selections"])):
+            continue
+        league = match.get("espn_league")
+        if league in ESPN_LEAGUES:
+            by_league.setdefault(league, []).append(fixture_id)
+        else:
+            require_full_refresh = True
+
+    if require_full_refresh:
+        updated, _ = matches(day, max_age=RESULT_REFRESH_SECONDS)
+        fixtures.update(index_fixtures(updated))
+    scores_by_id = {fixture_id: final_scores(match) for fixture_id, match in fixtures.items()}
+    for league, fixture_ids in by_league.items():
+        updated, _ = matches(day, league, max_age=RESULT_REFRESH_SECONDS)
+        fresh = index_fixtures(updated)
+        for fixture_id in fixture_ids:
+            old = fixtures.get(fixture_id, {})
+            # A league-specific result can use the canonical ID instead of an archived alias.
+            match = fresh.get(fixture_id) or fresh.get(str(old.get("id")))
+            if match:
+                scores_by_id[fixture_id] = merge_final_scores(final_scores(match), scores_by_id.get(fixture_id, {}))
+    return scores_by_id
+
+
 def recommendation_report(db_path, day):
     with closing(membership.connect(db_path)) as db:
         archived = db.execute(
@@ -1227,11 +1270,8 @@ def recommendation_report(db_path, day):
         ).fetchall()
     fixtures = {}
     if archived and day <= (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3)).date().isoformat():
-        items, _ = matches(day)
-        for match in items:
-            scores = final_scores(match)
-            for fixture_id in (match["id"], *match.get("fixture_aliases", [])):
-                fixtures[str(fixture_id)] = scores
+        with RESULT_REFRESH_LOCKS.setdefault(day, Lock()):
+            fixtures = refresh_recommendation_scores(day, archived)
     rows = []
     for item in archived:
         scores = fixtures.get(item["fixture_id"], {})

@@ -194,7 +194,7 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 
 <section class="card" id="recommendationResults" hidden>
 <h3>Sistem Önerisi Sonuçları</h3>
-<button type="button" onclick="loadRecommendationResults()">Seçili günün sonuçlarını göster</button>
+<button type="button" onclick="loadRecommendationResults(true)">Sonuçları şimdi yenile</button>
 <p id="recommendationSummary" role="status"></p>
 <ul id="recommendationRows"></ul>
 </section>
@@ -249,6 +249,7 @@ String(d.getDate()).padStart(2,'0')
 function today(){
 clearRecommendationResults();
 el('matchDate').value=localDate();
+loadRecommendationResults();
 showSelectedMatches();
 }
 
@@ -399,36 +400,72 @@ update();
 if(canViewPanel('teams'))filtered.forEach(m=>loadTeamInfo(m));
 }
 el('recommendationResults').hidden = !canViewPanel('system') || el('accountNav').hidden;
+const recommendationPollInterval = 30000;
+let recommendationTimer;
+let recommendationController;
 let recommendationRequest = 0;
-async function loadRecommendationResults(){
- const request = ++recommendationRequest;
+function recentRecommendationDay(date){
+ const today = localDate();
+ const yesterday = new Date(Date.parse(today+'T00:00:00Z') - 86400000).toISOString().slice(0,10);
+ return date === today || date === yesterday;
+}
+async function loadRecommendationResults(manual = false){
  const date = el('matchDate').value;
- el('recommendationRows').replaceChildren();
- el('recommendationSummary').textContent = 'Sonuçlar yükleniyor…';
+ if(el('recommendationResults').hidden || !date || (!manual && document.hidden)) return;
+ if(recommendationController) return;
+ clearTimeout(recommendationTimer);
+ const request = ++recommendationRequest;
+ const controller = new AbortController();
+ recommendationController = controller;
+ const timeout = setTimeout(() => controller.abort(), 60000);
+ const summary = el('recommendationSummary');
+ if(!summary.textContent) summary.textContent = 'Sonuçlar yükleniyor…';
+ let keepPolling = recentRecommendationDay(date);
  try {
-  const report = await api('/api/recommendation-results?date='+encodeURIComponent(date));
+  const report = await api('/api/recommendation-results?date='+encodeURIComponent(date), {signal:controller.signal});
   if(request !== recommendationRequest || date !== el('matchDate').value) return;
-  el('recommendationSummary').textContent = date+' · '+(report.rows.length ?
+  keepPolling = keepPolling && (report.pending > 0 || date === localDate());
+  summary.textContent = date+' · '+(report.rows.length ?
    '🟢 Tuttu '+report.hits+' · ❌ Yattı '+report.misses+' · Bekleyen '+report.pending+
    ' · İsabet '+(report.accuracy === null ? '—' : '%'+report.accuracy.toLocaleString('tr-TR')) :
    'Maç öncesinde kaydedilmiş oynanabilir öneri yok.');
+  const rows = document.createDocumentFragment();
   for(const row of report.rows){
    const item = document.createElement('li');
    const status = row.hit === true ? '🟢 Tuttu' : row.hit === false ? '❌ Yattı' : 'Sonuç bekleniyor';
    item.textContent = row.home+' - '+row.away+' · '+row.market+' · '+row.points+' puan · '+status;
-   el('recommendationRows').append(item);
+   rows.append(item);
   }
+  el('recommendationRows').replaceChildren(rows);
  }catch(e){
-  if(request === recommendationRequest) el('recommendationSummary').textContent='Öneri sonuçları alınamadı.';
+  if(request === recommendationRequest && !el('recommendationRows').childElementCount){
+   summary.textContent = keepPolling ? 'Sonuçlar alınamadı. Otomatik olarak yeniden denenecek.' : 'Öneri sonuçları alınamadı.';
+  }
+ }finally{
+  clearTimeout(timeout);
+  if(request === recommendationRequest){
+   recommendationController = undefined;
+   if(keepPolling && !document.hidden){
+    recommendationTimer = setTimeout(loadRecommendationResults, recommendationPollInterval);
+   }
+  }
  }
 }
+document.addEventListener('visibilitychange', () => {
+ if(document.hidden) clearTimeout(recommendationTimer);
+ else if(recentRecommendationDay(el('matchDate').value)) loadRecommendationResults();
+});
 function clearRecommendationResults(){
  recommendationRequest++;
+ clearTimeout(recommendationTimer);
+ recommendationController?.abort();
+ recommendationController = undefined;
  el('recommendationSummary').textContent='';
  el('recommendationRows').replaceChildren();
 }
 async function load(){
  clearRecommendationResults();
+ loadRecommendationResults();
  const picker=el('leagueFilter'),old=selectedLeagues();
  el('mode').textContent='Lig seçimi hazır';
  el('matches').textContent='Önce ligi seçin, sonra Seçilen maçları getir düğmesine basın.';
