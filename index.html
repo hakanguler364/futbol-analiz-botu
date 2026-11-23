@@ -270,11 +270,13 @@ String(d.getDate()).padStart(2,'0')
 ].join('-');
 }
 
-function today(){
-clearRecommendationResults();
-el('matchDate').value=localDate();
-loadRecommendationResults();
-showSelectedMatches();
+async function today(){
+ clearRecommendationResults();
+ const date=localDate();
+ el('matchDate').value=date;
+ const request=recommendationRequest;
+ await showSelectedMatches();
+ if(request===recommendationRequest && el('matchDate').value===date)loadRecommendationResults();
 }
 
 async function api(url,options){
