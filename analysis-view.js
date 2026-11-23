@@ -43,16 +43,22 @@ function matchResultScores(home,away,h2h){
  const breakdown={homeScored:ha,homeConceded:hc,awayScored:aa,awayConceded:ac,homeVenueCount:homeVenue.count,awayVenueCount:awayVenue.count,homeVenueScored:homeVenue.count?homeVenue.scored/homeVenue.count:null,homeVenueConceded:homeVenue.count?homeVenue.conceded/homeVenue.count:null,awayVenueScored:awayVenue.count?awayVenue.scored/awayVenue.count:null,awayVenueConceded:awayVenue.count?awayVenue.conceded/awayVenue.count:null,venueGoalsReady};
  return {breakdown,ms1:Math.round(100*edge*winnerScale),ms0:Math.round(100*draw),ms2:Math.round(100*(1-edge)*winnerScale),note:(h2hData?'İkili rekabet: '+h2hData.home_wins+' ev galibiyeti · '+h2hData.draws+' beraberlik · '+h2hData.away_wins+' dep galibiyeti ('+h2hData.count+' maç). ':'İkili rekabet verisi sınırlı. ')+(venueGoalsReady?'İç/dış saha gol verisi ağırlığı %65. ':'İç/dış saha gol verisi yetersiz; genel ortalamalar kullanıldı. ')+'Model puanı · olasılık değildir'};
 }
+function matchResultCards(p){
+ const entries=[['MS 1','Ev sahibi',p.ms1],['MS 0','Beraberlik',p.ms0],['MS 2','Deplasman',p.ms2]];
+ const cards=entries.map(([label,name,score])=>{
+  const available=Number.isFinite(score);
+  return '<div class="ms-score-item"><b>'+label+'</b><small>'+name+'</small><strong style="color:'+(available?predictionColor(score):'#aebcd2')+'">'+(available?score:'—')+'</strong><small>'+(available?'puan':'Veri yok')+'</small></div>';
+ }).join('');
+ return '<div class="ms-score-grid">'+cards+'</div>';
+}
 function matchResultPanel(p){
- const entries=[['MS 1',p.ms1],['MS 0',p.ms0],['MS 2',p.ms2]];
- const scoreCards=entries.map(([label,v])=>'<div class="ms-score-item"><b>'+label+'</b><strong style="color:'+(v===null?'#aebcd2':predictionColor(v))+'">'+(v===null?'—':v)+'</strong><small>'+(v===null?'Veri yok':'puan')+'</small></div>').join('');
  const drawRisk=p.ms1!==null&&p.ms0!==null&&Math.abs(p.ms1-p.ms0)<5;
  const drawWarning=drawRisk?'<p style="color:#ffcf56;font-weight:700">⚠️ Beraberlik riski yüksek — MS 1 ile MS 0 arasında 5 puandan az fark var.</p>':'';
  const info=p.breakdown||{};
  const fmt=x=>Number.isFinite(x)?x.toFixed(2):'Veri yok';
  const general='<div class="inner"><h4>📊 Genel Performans</h4><small>Ev sahibi: attığı '+fmt(info.homeScored)+' / yediği '+fmt(info.homeConceded)+' gol/maç</small><p><small>Deplasman: attığı '+fmt(info.awayScored)+' / yediği '+fmt(info.awayConceded)+' gol/maç</small></p></div>';
  const venue='<div class="inner"><h4>🏟️ İç Saha / Deplasman Performansı</h4><small>Ev sahibi iç saha ('+(info.homeVenueCount||0)+' maç): attığı '+fmt(info.homeVenueScored)+' / yediği '+fmt(info.homeVenueConceded)+' gol/maç</small><p><small>Deplasman dış saha ('+(info.awayVenueCount||0)+' maç): attığı '+fmt(info.awayVenueScored)+' / yediği '+fmt(info.awayVenueConceded)+' gol/maç</small></p><small>'+(info.venueGoalsReady?'Gol karşılaştırmasında iç/dış saha %65, genel %35 ağırlıklı.':'İç/dış saha verisi yetersiz: gol karşılaştırmasında genel ortalama kullanılıyor.')+'</small></div>';
- return '<div class="panel full"><h3>🏆 Maç Sonucu (90 Dakika)</h3><div class="ms-score-grid">'+scoreCards+'</div>'+drawWarning+general+venue+'<small>'+esc(p.note)+'</small></div>';
+ return '<div class="panel full"><h3>🏆 Maç Sonucu (90 Dakika)</h3>'+matchResultCards(p)+drawWarning+general+venue+'<small>'+esc(p.note)+'</small></div>';
 }
 
 function predictionColor(p){return p>=80?'#34e981':'#ff7889';}
@@ -143,7 +149,7 @@ const recommendedStatus=safest?optionRow(safest[0],'⚽ '+safest[0],safest[1],Bo
 const over25Status=optionRow('2,5 Üst','⚽ 2,5 Üst',over25Score);
 const half05Status=optionRow('İY 0,5 Üst','⏱️ İlk Yarı 0,5 Üst',adjustedHalfScore,Boolean(riskFlag));
 const systemTeams=esc(r.home)+' - '+esc(r.away);
-const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4><h4>Seçeneklerin ayrı değerlendirmesi</h4>'+msStatus+recommendedStatus+over25Status+half05Status+'</div><small>Yeşil: model puanı 80’in üzerinde ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+'</div>';
+const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4><h4>Seçeneklerin ayrı değerlendirmesi</h4>'+matchResultCards(msResult)+msStatus+recommendedStatus+over25Status+half05Status+'</div><small>Yeşil: model puanı 80’in üzerinde ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+'</div>';
 
 const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult)};
 const all=enabled===null;

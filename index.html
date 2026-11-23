@@ -168,7 +168,22 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 @media(max-width:700px){.team-versus .match-team strong{font-size:clamp(14px,4vw,19px)!important}.analysis-grid>.panel:first-child .form-team-name{font-size:13px!important}}
 
 .data-warning{width:100%;box-sizing:border-box;margin:9px 0;padding:8px 10px;border-radius:7px;text-align:center;font-size:12px;font-weight:800;letter-spacing:.15px;border:1px solid;line-height:1.5}.data-warning span{font-weight:600;margin-left:6px}.data-warning.red{color:#ff858e;background:#5b1d2940;border-color:#e64b60}.data-warning.amber{color:#ffd06c;background:#68471940;border-color:#dba43c}.data-warning.green{color:#75e8a6;background:#1a5b3740;border-color:#347d58}
- .ms-score-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:9px 0}.ms-score-item{background:#0c2036;border:1px solid #31506a;border-radius:10px;text-align:center;padding:9px 3px;display:flex;flex-direction:column;gap:4px}.ms-score-item strong{font-size:23px}.ms-score-item small{font-size:10px}\n
+.ms-score-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
+.ms-score-item{display:grid;place-items:center;align-content:center;gap:4px;min-width:0;padding:12px 3px;background:#10243b;border:1px solid #4b6786;border-radius:10px;text-align:center}
+.ms-score-item b{font-size:15px;color:#f2f7ff}
+.ms-score-item strong{font-size:24px;line-height:1.05}
+.analysis-grid .ms-score-item small{font-size:11px;color:#c5d5e7}
+.recommendation-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin-top:8px}
+.recommendation-total,.recommendation-badge{border:1px solid;border-radius:9px;font-weight:750}
+.recommendation-total{display:grid;gap:2px;padding:8px 10px;text-align:center}
+.recommendation-total strong{font-size:24px;line-height:1.15}
+.recommendation-hit{color:#a3ffd0;background:#103b2b;border-color:#4bd895}
+.recommendation-miss{color:#ffc1c8;background:#4b202e;border-color:#ff768b}
+.recommendation-pending{color:#e0eafb;background:#21324a;border-color:#6381a6}
+#recommendationRows{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+#recommendationRows li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;background:#122239;border:1px solid #344d69;border-radius:9px;padding:9px 10px}
+.recommendation-match{flex:1 1 165px;overflow-wrap:anywhere}
+.recommendation-badge{padding:4px 8px;white-space:nowrap}
 /* Maç sonucu bahis verileri: kaynağı doğrulanmayan rakamlar gösterilmez */
 .odds-panel{margin:12px 0;padding:13px;border:1px solid #37678b;border-radius:14px;background:linear-gradient(145deg,#142d47,#0a1c30)}
 .odds-title{font-weight:750;font-size:15px;margin-bottom:11px}.odds-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
@@ -195,7 +210,7 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 <section class="card" id="recommendationResults" hidden>
 <h3>Sistem Önerisi Sonuçları</h3>
 <button type="button" onclick="loadRecommendationResults(true)">Sonuçları şimdi yenile</button>
-<p id="recommendationSummary" role="status"></p>
+<div id="recommendationSummary" role="status"></div>
 <ul id="recommendationRows"></ul>
 </section>
 
@@ -426,14 +441,33 @@ async function loadRecommendationResults(manual = false){
   if(request !== recommendationRequest || date !== el('matchDate').value) return;
   keepPolling = keepPolling && (report.pending > 0 || date === localDate());
   summary.textContent = date+' · '+(report.rows.length ?
-   '🟢 Tuttu '+report.hits+' · ❌ Yattı '+report.misses+' · Bekleyen '+report.pending+
-   ' · İsabet '+(report.accuracy === null ? '—' : '%'+report.accuracy.toLocaleString('tr-TR')) :
+   'İsabet '+(report.accuracy === null ? '—' : '%'+report.accuracy.toLocaleString('tr-TR')) :
    'Maç öncesinde kaydedilmiş oynanabilir öneri yok.');
+  if(report.rows.length){
+   const totals = document.createElement('div');
+   totals.className = 'recommendation-totals';
+   for(const [label,count,state] of [['✓ Tuttu',report.hits,'hit'],['✕ Yattı',report.misses,'miss'],['Bekleyen',report.pending,'pending']]){
+    const box = document.createElement('div');
+    box.className = 'recommendation-total recommendation-'+state;
+    box.textContent = label;
+    const number = document.createElement('strong');
+    number.textContent = count;
+    box.append(number);
+    totals.append(box);
+   }
+   summary.append(totals);
+  }
   const rows = document.createDocumentFragment();
   for(const row of report.rows){
    const item = document.createElement('li');
-   const status = row.hit === true ? '🟢 Tuttu' : row.hit === false ? '❌ Yattı' : 'Sonuç bekleniyor';
-   item.textContent = row.home+' - '+row.away+' · '+row.market+' · '+row.points+' puan · '+status;
+   const details = document.createElement('span');
+   details.className = 'recommendation-match';
+   details.textContent = row.home+' - '+row.away+' · '+row.market+' · '+row.points+' puan';
+   const badge = document.createElement('b');
+   const state = row.hit === true ? 'hit' : row.hit === false ? 'miss' : 'pending';
+   badge.className = 'recommendation-badge recommendation-'+state;
+   badge.textContent = {hit:'✓ Tuttu',miss:'✕ Yattı',pending:'Sonuç bekleniyor'}[state];
+   item.append(details,badge);
    rows.append(item);
   }
   el('recommendationRows').replaceChildren(rows);
