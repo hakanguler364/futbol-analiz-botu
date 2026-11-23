@@ -1309,7 +1309,8 @@ def recommendation_report(db_path, day):
         scores = fixtures.get(item["fixture_id"], {})
         for market, points in json.loads(item["selections"]).items():
             rows.append({"home": item["home"], "away": item["away"], "market": market,
-                         "points": points, "hit": recommendation_result(market, scores)})
+                         "points": points, "hit": recommendation_result(market, scores),
+                         "full_score": scores.get("full"), "half_score": scores.get("half")})
     hits = sum(row["hit"] is True for row in rows)
     misses = sum(row["hit"] is False for row in rows)
     return {"rows": rows, "hits": hits, "misses": misses, "pending": len(rows) - hits - misses,

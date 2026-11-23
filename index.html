@@ -183,6 +183,8 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 #recommendationRows{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 #recommendationRows li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;background:#122239;border:1px solid #344d69;border-radius:9px;padding:9px 10px}
 .recommendation-match{flex:1 1 165px;overflow-wrap:anywhere}
+.recommendation-scores{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.recommendation-score{padding:2px 6px;border:1px solid #6381a6;border-radius:5px;color:#e0eafb;font-size:.85em;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
 .recommendation-badge{padding:4px 8px;white-space:nowrap}
 /* Maç sonucu bahis verileri: kaynağı doğrulanmayan rakamlar gösterilmez */
 .odds-panel{margin:12px 0;padding:13px;border:1px solid #37678b;border-radius:14px;background:linear-gradient(145deg,#142d47,#0a1c30)}
@@ -463,6 +465,16 @@ async function loadRecommendationResults(manual = false){
    const details = document.createElement('span');
    details.className = 'recommendation-match';
    details.textContent = row.home+' - '+row.away+' · '+row.market+' · '+row.points+' puan';
+   const scores = document.createElement('span');
+   scores.className = 'recommendation-scores';
+   for(const [label,score] of [['MS',row.full_score],['İY',row.half_score]]){
+    if(!score) continue;
+    const chip = document.createElement('span');
+    chip.className = 'recommendation-score';
+    chip.textContent = label+' '+score.join('–');
+    scores.append(chip);
+   }
+   if(scores.childElementCount) details.append(scores);
    const badge = document.createElement('b');
    const state = row.hit === true ? 'hit' : row.hit === false ? 'miss' : 'pending';
    badge.className = 'recommendation-badge recommendation-'+state;
