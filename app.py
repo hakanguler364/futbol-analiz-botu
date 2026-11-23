@@ -1265,6 +1265,7 @@ def refresh_recommendation_scores(day, archived):
         updated, _ = matches(day, max_age=RESULT_REFRESH_SECONDS)
         fixtures.update(index_fixtures(updated))
     scores_by_id = {fixture_id: final_scores(match) for fixture_id, match in fixtures.items()}
+    kickoff_by_id = {fixture_id: match.get("utcDate") for fixture_id, match in fixtures.items()}
     for league, fixture_ids in by_league.items():
         updated, _ = matches(day, league, max_age=RESULT_REFRESH_SECONDS)
         fresh = index_fixtures(updated)
@@ -1273,6 +1274,8 @@ def refresh_recommendation_scores(day, archived):
             # A league-specific result can use the canonical ID instead of an archived alias.
             match = fresh.get(fixture_id) or fresh.get(str(old.get("id")))
             if match:
+                if match.get("utcDate"):
+                    kickoff_by_id[fixture_id] = match["utcDate"]
                 scores_by_id[fixture_id] = merge_final_scores(final_scores(match), scores_by_id.get(fixture_id, {}))
     for item in archived:
         fixture_id = item["fixture_id"]
@@ -1291,7 +1294,7 @@ def refresh_recommendation_scores(day, archived):
                     half = None
             scores = dict(scores, half=half)
         scores_by_id[fixture_id] = scores
-    return scores_by_id
+    return scores_by_id, kickoff_by_id
 
 
 def recommendation_report(db_path, day):
@@ -1300,15 +1303,17 @@ def recommendation_report(db_path, day):
             """SELECT fixture_id, home, away, selections FROM recommendation_archive
                WHERE match_day=? ORDER BY captured_at, fixture_id""", (day,)
         ).fetchall()
-    fixtures = {}
+    scores_by_id, kickoff_by_id = {}, {}
     if archived and day <= (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3)).date().isoformat():
         with RESULT_REFRESH_LOCKS.setdefault(day, Lock()):
-            fixtures = refresh_recommendation_scores(day, archived)
+            scores_by_id, kickoff_by_id = refresh_recommendation_scores(day, archived)
     rows = []
     for item in archived:
-        scores = fixtures.get(item["fixture_id"], {})
+        fixture_id = item["fixture_id"]
+        scores = scores_by_id.get(fixture_id, {})
         for market, points in json.loads(item["selections"]).items():
             rows.append({"home": item["home"], "away": item["away"], "market": market,
+                         "kickoff": kickoff_by_id.get(fixture_id),
                          "points": points, "hit": recommendation_result(market, scores),
                          "full_score": scores.get("full"), "half_score": scores.get("half")})
     hits = sum(row["hit"] is True for row in rows)

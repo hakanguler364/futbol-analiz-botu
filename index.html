@@ -464,7 +464,9 @@ async function loadRecommendationResults(manual = false){
    const item = document.createElement('li');
    const details = document.createElement('span');
    details.className = 'recommendation-match';
-   details.textContent = row.home+' - '+row.away+' · '+row.market+' · '+row.points+' puan';
+   const kickoff = document.createElement('strong');
+   kickoff.textContent = kickoffTR(row.kickoff);
+   details.append(kickoff, ' · '+row.home+' - '+row.away+' · '+row.market+' · '+row.points+' puan');
    const scores = document.createElement('span');
    scores.className = 'recommendation-scores';
    for(const [label,score] of [['MS',row.full_score],['İY',row.half_score]]){
