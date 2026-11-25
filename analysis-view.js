@@ -192,7 +192,13 @@ const championsStatus=championsRule
   championsOption(null,'Ev ilk yarı gol atar','homeHalf',championsHomeHalfRisk)
  :'';
 const systemTeams=esc(r.home)+' - '+esc(r.away);
-const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4><h4>Seçeneklerin ayrı değerlendirmesi</h4>'+matchResultCards(msResult)+msStatus+recommendedStatus+over25Status+half05Status+championsStatus+'</div><small>Yeşil: model puanı 80’in üzerinde ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+'</div>';
+const requiredScores=[msResult.ms1,msResult.ms0,msResult.ms2,over25Score,scores.half05];
+if(championsRule)requiredScores.push(scores.over15,scores.homeHalf);
+const insufficientSystemData=requiredScores.some(score=>!Number.isFinite(score));
+const systemDataWarning=insufficientSystemData
+ ?'<span style="flex-shrink:0;color:#ffcf56;font-size:.75rem;font-weight:700">Yetersiz veri</span>'
+ :'';
+const systemPanel='<div class="panel full system-panel"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🎯 Sistem Önerisi</span>'+systemDataWarning+'</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4><h4>Seçeneklerin ayrı değerlendirmesi</h4>'+matchResultCards(msResult)+msStatus+recommendedStatus+over25Status+half05Status+championsStatus+'</div><small>Yeşil: model puanı 80’in üzerinde ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+'</div>';
 
 const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult)};
 const all=enabled===null;
