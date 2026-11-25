@@ -51,14 +51,14 @@ function matchResultCards(p){
  }).join('');
  return '<div class="ms-score-grid">'+cards+'</div>';
 }
-function matchResultPanel(p,privateAwayForm,privateDefense){
+function matchResultPanel(p,privateAwayForm,privateTrial){
  const drawRisk=p.ms1!==null&&p.ms0!==null&&Math.abs(p.ms1-p.ms0)<5;
  const drawWarning=drawRisk?'<p style="color:#ffcf56;font-weight:700">⚠️ Beraberlik riski yüksek — MS 1 ile MS 0 arasında 5 puandan az fark var.</p>':'';
  const info=p.breakdown||{};
  const fmt=x=>Number.isFinite(x)?x.toFixed(2):'Veri yok';
  const general='<div class="inner"><h4>📊 Genel Performans</h4><small>Ev sahibi: attığı '+fmt(info.homeScored)+' / yediği '+fmt(info.homeConceded)+' gol/maç</small><p><small>Deplasman: attığı '+fmt(info.awayScored)+' / yediği '+fmt(info.awayConceded)+' gol/maç</small></p></div>';
  const venue='<div class="inner"><h4>🏟️ İç Saha / Deplasman Performansı</h4><small>Ev sahibi iç saha ('+(info.homeVenueCount||0)+' maç): attığı '+fmt(info.homeVenueScored)+' / yediği '+fmt(info.homeVenueConceded)+' gol/maç</small><p><small>Deplasman dış saha ('+(info.awayVenueCount||0)+' maç): attığı '+fmt(info.awayVenueScored)+' / yediği '+fmt(info.awayVenueConceded)+' gol/maç</small></p><small>'+(info.venueGoalsReady?'Gol karşılaştırmasında iç/dış saha %65, genel %35 ağırlıklı.':'İç/dış saha verisi yetersiz: gol karşılaştırmasında genel ortalama kullanılıyor.')+'</small></div>';
- return '<div class="panel full"><h3>🏆 Maç Sonucu (90 Dakika)</h3>'+matchResultCards(p)+drawWarning+general+venue+privateAwayForm+privateDefense+'<small>'+esc(p.note)+'</small></div>';
+ return '<div class="panel full"><h3>🏆 Maç Sonucu (90 Dakika)</h3>'+matchResultCards(p)+privateTrial+drawWarning+general+venue+privateAwayForm+'<small>'+esc(p.note)+'</small></div>';
 }
 
 function predictionColor(p){return p>=80?'#34e981':'#ff7889';}
@@ -300,10 +300,18 @@ if(enabled===null){
   ?'<p class="data-warning red">⚠️ Hücum uyarısı · '+esc(leading===0?r.home:r.away)+' '
    +attack.count+' maçta '+attack.scored+' gol attı ('+(attack.scored/attack.count).toFixed(2).replace('.',',')+' gol/maç).</p>'
   :'';
- privateTrial='<div class="inner"><h4>Deneme MS Puanı</h4><div class="metric"><b>'+
-  labels.map((label,index)=>label+' '+trialVotes[index]).join(' · ')+'</b></div><small>'+comparison+
-  ' · İlk yarı '+(half?half.join('-'):'—')+' · Maç sonu '+(full?full.join('-')+' ('+labels[actual]+')':'—')+
-  '</small>'+warning+'<details style="margin-top:8px"><summary>Dört kriterin dayanağı</summary>'+
+ const existingScores=[msResult.ms1,msResult.ms0,msResult.ms2];
+ const scoreCells=labels.map((label,index)=>{
+  const existing=existingScores[index];
+  return '<div class="ms-score-item"><b>'+label+'</b><small>Mevcut: '+
+   (Number.isFinite(existing)?existing+'/100':'Veri yok')+'</small><strong>'+
+   trialVotes[index]+'/4</strong><small>Deneme</small></div>';
+ }).join('');
+ const result=full?full.join('–')+' · '+labels[actual]:'Sonuç bekleniyor';
+ privateTrial='<div class="inner"><h4>MS Puan Karşılaştırması</h4><div class="ms-score-grid">'+
+  scoreCells+'</div>'+metric('Maç sonucu',result)+'<small>Deneme: '+comparison+
+  (half?' · İlk yarı '+half.join('–'):'')+'</small>'+warning+
+  '<details style="margin-top:8px"><summary>Dört kriterin dayanağı</summary>'+
   privateDefense+privateForm+privateRivalry+'</details></div>';
 }
 const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult,privateAwayForm,privateTrial)};
