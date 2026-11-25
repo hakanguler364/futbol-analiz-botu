@@ -259,12 +259,21 @@ if(enabled===null){
  privateForm='<div class="inner"><h4>Son 5 maç · Form puanı</h4>'+form(r.home,a)+form(r.away,b)+
   '<small>Galibiyet +3 · Beraberlik +1 · Mağlubiyet −1</small></div>';
 }
+const rivalryPoints=(title,record,venue=false)=>{
+ const header='<div class="inner"><h4>'+title+'</h4>';
+ if(!record?.count||![record.home_wins,record.draws,record.away_wins].every(goalCountValid))
+  return header+'<small>Doğrulanmış maç verisi yok.</small></div>';
+ const results=[[r.home,record.home_wins],['Beraberlik',record.draws],[r.away,record.away_wins]];
+ const most=Math.max(...results.map(([,count])=>count));
+ const leaders=results.filter(([,count])=>count===most);
+ const summary=leaders.length===1?'En çok çıkan sonuç: '+esc(leaders[0][0]):'En yüksek sayılar eşit.';
+ const sample=venue?record.count+'/5 doğrulanmış maç':record.count+' doğrulanmış maç';
+ return header+results.map(([name,count])=>metric(esc(name),count+' puan')).join('')+
+  '<small>'+sample+' · '+summary+'</small></div>';
+};
 const privateRivalry=enabled===null
- ?'<div class="inner"><h4>Doğrulanmış ikili maçlar · Galibiyet puanı</h4>'+
-  (h?.count&&[h.home_wins,h.draws,h.away_wins].every(goalCountValid)
-   ?metric(esc(r.home),h.home_wins+' puan')+metric(esc(r.away),h.away_wins+' puan')+
-    '<small>'+h.count+' doğrulanmış maç · '+h.draws+' beraberlik</small>'
-   :'<small>Doğrulanmış maç verisi yok.</small>')+'</div>'
+ ?rivalryPoints('Doğrulanmış ikili maçlar · Sonuç puanı',h)+
+  rivalryPoints('Ev sahibinin sahasında · Son 5 ikili maç',h?.venue_last5,true)
  :'';
 const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult,privateAwayForm,privateDefense+privateForm+privateRivalry)};
 const all=enabled===null;
