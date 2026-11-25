@@ -259,7 +259,14 @@ if(enabled===null){
  privateForm='<div class="inner"><h4>Son 5 maç · Form puanı</h4>'+form(r.home,a)+form(r.away,b)+
   '<small>Galibiyet +3 · Beraberlik +1 · Mağlubiyet −1</small></div>';
 }
-const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult,privateAwayForm,privateDefense+privateForm)};
+const privateRivalry=enabled===null
+ ?'<div class="inner"><h4>Doğrulanmış ikili maçlar · Galibiyet puanı</h4>'+
+  (h?.count&&[h.home_wins,h.draws,h.away_wins].every(goalCountValid)
+   ?metric(esc(r.home),h.home_wins+' puan')+metric(esc(r.away),h.away_wins+' puan')+
+    '<small>'+h.count+' doğrulanmış maç · '+h.draws+' beraberlik</small>'
+   :'<small>Doğrulanmış maç verisi yok.</small>')+'</div>'
+ :'';
+const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult,privateAwayForm,privateDefense+privateForm+privateRivalry)};
 const all=enabled===null;
 if(!all){
  for(const key of Object.keys(scores)){
