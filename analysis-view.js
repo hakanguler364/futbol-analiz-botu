@@ -74,17 +74,20 @@ const valid=s=>s&&s.data_scope!=='season'&&Number.isFinite(s.count)&&s.count>0;
 const pct=(s,venue,field)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue&&Number.isFinite(x[field]));return g.length?Math.round(100*g.filter(x=>x[field]>0).length/g.length):null;};
 const halfCard=(s,venue,field,label)=>{const all=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue);const g=all.filter(x=>Number.isFinite(x.first_half_scored)&&Number.isFinite(x.first_half_conceded));const hits=g.filter(x=>x[field]>0).length,total=g.reduce((n,x)=>n+x[field],0),p=g.length?Math.round(100*hits/g.length):null;const rows=all.map(x=>'<div class="half-detail-row"><span>'+esc(x.date||'?')+' · '+esc(x.opponent||'?')+'</span><b>'+(Number.isFinite(x.first_half_scored)&&Number.isFinite(x.first_half_conceded)?x.first_half_scored+'-'+x.first_half_conceded:'Skor yok')+'</b></div>').join('');return '<div class="half-mini"><div>'+label+'</div><strong style="color:'+(p===null?'#9aadc4':p>=75?'#4bea8e':'#ffcf56')+'">'+(p===null?'Veri yok':'%'+p)+'</strong><small>'+(p===null?'İlk yarı skoru bulunamadı':hits+'/'+g.length+' maç · '+total+' gol')+'</small><details class="half-detail"><summary>Maçları gör</summary>'+(rows||'<small>Geçmiş maç bulunamadı</small>')+'<small>Skorlar takım açısından: attığı-yediği. Yalnız doğrulanmış ilk yarılar hesaplanır.</small></details></div>';};
 const halfMini='<div class="panel half-mini-panel"><h3>⏱ İlk Yarı Gol Analizi</h3><div class="half-mini-grid">'+halfCard(a,'home','first_half_scored','Ev · Atma')+halfCard(b,'away','first_half_scored','Dep · Atma')+halfCard(a,'home','first_half_conceded','Ev · Yeme')+halfCard(b,'away','first_half_conceded','Dep · Yeme')+'</div><small>Ev: yalnız iç saha · Dep: yalnız dış saha · %75+ yeşil</small></div>';
-const venueHalf=(s,venue)=>{const g=(s?.games||[]).filter(x=>x.venue===venue&&Number.isFinite(x.first_half_scored)&&Number.isFinite(x.first_half_conceded));return g;};
-const homeHalf=venueHalf(a,'home'),awayHalf=venueHalf(b,'away');
-const halfAll=[...homeHalf,...awayHalf];
-
-
-let lambda=null,halfMethod='';
-if(homeHalf.length>=2&&awayHalf.length>=2){lambda=(homeHalf.reduce((n,g)=>n+g.first_half_scored+g.first_half_conceded,0)/homeHalf.length+awayHalf.reduce((n,g)=>n+g.first_half_scored+g.first_half_conceded,0)/awayHalf.length)/2;halfMethod='Gerçek ilk yarı verisi';}
-else if(halfAll.length>=3){lambda=halfAll.reduce((n,g)=>n+g.first_half_scored+g.first_half_conceded,0)/halfAll.length;halfMethod='Sınırlı ilk yarı verisi';}
+const goalCountValid=value=>Number.isInteger(value)&&value>=0;
+const verifiedVenueGames=(section,venue,scored,conceded)=>
+ (section?.venue_games||section?.games||[]).filter(game=>
+  game.venue===venue&&goalCountValid(game[scored])&&goalCountValid(game[conceded]));
+const homeHalf=verifiedVenueGames(a,'home','first_half_scored','first_half_conceded');
+const awayHalf=verifiedVenueGames(b,'away','first_half_scored','first_half_conceded');
+const averageHalf=games=>games.reduce((sum,game)=>sum+game.first_half_scored+game.first_half_conceded,0)/games.length;
+const lambda=homeHalf.length>=5&&awayHalf.length>=5?(averageHalf(homeHalf)+averageHalf(awayHalf))/2:null;
+const fullDataReady=(section,venue)=>valid(section)&&section.count>=5&&
+ goalCountValid(section.scored)&&goalCountValid(section.conceded)&&
+ verifiedVenueGames(section,venue,'scored','conceded').length>=5;
 
 const poissonOver=(l,k)=>l===null?null:100*(1-Math.exp(-l)*Array.from({length:k+1},(_,i)=>{let factorial=1;for(let j=2;j<=i;j++)factorial*=j;return Math.pow(l,i)/factorial;}).reduce((x,y)=>x+y,0));
-const fullLambda=valid(a)&&valid(b)?((a.scored+a.conceded)/a.count+(b.scored+b.conceded)/b.count)/2:null;
+const fullLambda=fullDataReady(a,'home')&&fullDataReady(b,'away')?((a.scored+a.conceded)/a.count+(b.scored+b.conceded)/b.count)/2:null;
 const avg=(s,field)=>valid(s)?(s[field]/s.count):null;
 const fmtAvg=v=>v===null?'Veri yok':v.toFixed(2).replace('.',',');
 const goalValueColor=v=>v===null?'':v>1?'score-green':v<1?'score-red':'';
@@ -118,7 +121,7 @@ const homeDefenseRisk=homeHalfAttack!==null&&awayHalfDefense!==null&&homeHalfAtt
 const awayDefenseRisk=awayHalfAttack!==null&&homeHalfDefense!==null&&awayHalfAttack>75&&homeHalfDefense<40;
 const defenseRiskCount=Number(homeDefenseRisk)+Number(awayDefenseRisk);
 const halfScore=poissonOver(lambda,0),adjustedHalfScore=halfScore===null?null:Math.max(0,halfScore-15*defenseRiskCount),generalScore=poissonOver(fullLambda,1);
-const scores={over15:generalScore,homeHalf:pct(a,'home','first_half_scored'),awayHalf:pct(b,'away','first_half_scored'),half05:adjustedHalfScore,half15:poissonOver(lambda,1)};
+const scores={over15:generalScore,homeHalf:homeHalf.length>=5?Math.round(100*homeHalf.filter(game=>game.first_half_scored>0).length/homeHalf.length):null,awayHalf:awayHalf.length>=5?Math.round(100*awayHalf.filter(game=>game.first_half_scored>0).length/awayHalf.length):null,half05:adjustedHalfScore,half15:poissonOver(lambda,1)};
 const championsRule=r.champions_league_data_rule===true;
 let championsHalfRisk=false,championsHomeHalfRisk=false;
 if(championsRule){
@@ -183,8 +186,7 @@ const optionRow=(market,label,score,extraRisk=false)=>{
 if(msLeader)optionRow(msLeader[0],msLeader[0],msLeader[1],Boolean(msClose||goalConflict));
 const recommendedStatus=safest?optionRow(safest[0],'⚽ '+safest[0],safest[1],Boolean(riskFlag&&safest[0]==='İY 0,5 Üst')):'';
 const over25Status=optionRow('2,5 Üst','⚽ 2,5 Üst',over25Score);
-const championsOption=(market,label,key,risk=false)=>scores[key]===null
- ?metric(label,'Veri yetersiz'):optionRow(market,label,scores[key],risk);
+const championsOption=(market,label,key,risk=false)=>optionRow(market,label,scores[key],risk);
 const half05Status=championsRule
  ?championsOption('İY 0,5 Üst','⏱️ İlk Yarı 0,5 Üst','half05',championsHalfRisk)
  :optionRow('İY 0,5 Üst','⏱️ İlk Yarı 0,5 Üst',adjustedHalfScore,Boolean(riskFlag));
@@ -222,8 +224,7 @@ if(!all){
 return {
  html:Object.entries(panels).filter(([key])=>all||enabled.includes(key)).map(([,html])=>html).join(''),
  scores,
- ...(championsRule?{insufficient:Object.keys(scores).filter(key=>
-  ['over15','homeHalf','half05'].includes(key)&&scores[key]===null)}:{}),
+ insufficient:Object.keys(scores).filter(key=>scores[key]===null),
  ...(all?{counts:{home:venueCount(a,'home',false),away:venueCount(b,'away',false),homeHalf:venueCount(a,'home',true),awayHalf:venueCount(b,'away',true)}}:{})
 };
 }
