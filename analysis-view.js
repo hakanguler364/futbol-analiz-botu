@@ -243,7 +243,23 @@ if(enabled===null){
    '<small>'+(leader?'Savunma avantajı: '+esc(leader):'Gol yeme ortalamaları eşit.')+'</small>'
    :'<small>Karşılaştırma için iki tarafta da en az üç doğrulanmış maç gerekli.</small>')+'</div>';
 }
-const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult,privateAwayForm,privateDefense)};
+let privateForm='';
+if(enabled===null){
+ const form=(name,section)=>{
+  const games=(section?.games||[]).filter(game=>
+   goalCountValid(game.scored)&&goalCountValid(game.conceded)&&
+   (!r.date||!game.date||game.date.slice(0,10)<r.date.slice(0,10)))
+   .sort((left,right)=>String(right.date||'').localeCompare(String(left.date||''))).slice(0,5);
+  if(games.length<5)return metric(esc(name),'Yetersiz veri ('+games.length+'/5)');
+  const wins=games.filter(game=>game.scored>game.conceded).length;
+  const draws=games.filter(game=>game.scored===game.conceded).length;
+  const losses=5-wins-draws;
+  return metric(esc(name),wins+'G · '+draws+'B · '+losses+'M · '+(3*wins+draws-losses)+' puan');
+ };
+ privateForm='<div class="inner"><h4>Son 5 maç · Form puanı</h4>'+form(r.home,a)+form(r.away,b)+
+  '<small>Galibiyet +3 · Beraberlik +1 · Mağlubiyet −1</small></div>';
+}
+const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult,privateAwayForm,privateDefense+privateForm)};
 const all=enabled===null;
 if(!all){
  for(const key of Object.keys(scores)){
