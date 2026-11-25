@@ -51,14 +51,14 @@ function matchResultCards(p){
  }).join('');
  return '<div class="ms-score-grid">'+cards+'</div>';
 }
-function matchResultPanel(p){
+function matchResultPanel(p,privateAwayForm){
  const drawRisk=p.ms1!==null&&p.ms0!==null&&Math.abs(p.ms1-p.ms0)<5;
  const drawWarning=drawRisk?'<p style="color:#ffcf56;font-weight:700">⚠️ Beraberlik riski yüksek — MS 1 ile MS 0 arasında 5 puandan az fark var.</p>':'';
  const info=p.breakdown||{};
  const fmt=x=>Number.isFinite(x)?x.toFixed(2):'Veri yok';
  const general='<div class="inner"><h4>📊 Genel Performans</h4><small>Ev sahibi: attığı '+fmt(info.homeScored)+' / yediği '+fmt(info.homeConceded)+' gol/maç</small><p><small>Deplasman: attığı '+fmt(info.awayScored)+' / yediği '+fmt(info.awayConceded)+' gol/maç</small></p></div>';
  const venue='<div class="inner"><h4>🏟️ İç Saha / Deplasman Performansı</h4><small>Ev sahibi iç saha ('+(info.homeVenueCount||0)+' maç): attığı '+fmt(info.homeVenueScored)+' / yediği '+fmt(info.homeVenueConceded)+' gol/maç</small><p><small>Deplasman dış saha ('+(info.awayVenueCount||0)+' maç): attığı '+fmt(info.awayVenueScored)+' / yediği '+fmt(info.awayVenueConceded)+' gol/maç</small></p><small>'+(info.venueGoalsReady?'Gol karşılaştırmasında iç/dış saha %65, genel %35 ağırlıklı.':'İç/dış saha verisi yetersiz: gol karşılaştırmasında genel ortalama kullanılıyor.')+'</small></div>';
- return '<div class="panel full"><h3>🏆 Maç Sonucu (90 Dakika)</h3>'+matchResultCards(p)+drawWarning+general+venue+'<small>'+esc(p.note)+'</small></div>';
+ return '<div class="panel full"><h3>🏆 Maç Sonucu (90 Dakika)</h3>'+matchResultCards(p)+drawWarning+general+venue+privateAwayForm+'<small>'+esc(p.note)+'</small></div>';
 }
 
 function predictionColor(p){return p>=80?'#34e981':'#ff7889';}
@@ -162,6 +162,20 @@ if(championsRule){
  }
 }
 const msResult=matchResultScores(a,b,h);
+const verifiedAwayResults=verifiedVenueGames(b,'away','scored','conceded')
+ .filter(game=>!r.date||!game.date||game.date.slice(0,10)<r.date.slice(0,10))
+ .sort((left,right)=>String(right.date||'').localeCompare(String(left.date||''))).slice(0,5);
+const awayScoreless=verifiedAwayResults.filter(game=>game.scored===0).length;
+const scorelessAdjustment=verifiedAwayResults.length===5&&awayScoreless>=3&&Number.isFinite(msResult.ms1);
+if(scorelessAdjustment){
+ msResult.ms1=Math.min(100,msResult.ms1+3);
+ msResult.ms0=Math.max(0,msResult.ms0-3);
+}
+const privateAwayForm=enabled===null&&verifiedAwayResults.length
+ ?'<div class="inner">'+metric(esc(r.away)+' · Gol atamadığı deplasman maçı',
+ awayScoreless+'/'+verifiedAwayResults.length)+'<small>'+
+ (scorelessAdjustment?'MS 1 +3 puan · MS 0 −3 puan':verifiedAwayResults.length<5?'Puan etkisi için 5 doğrulanmış deplasman maçı gerekli.':'Puan etkisi için en az 3/5 gerekli.')+'</small></div>'
+ :'';
 scores.ms1=msResult.ms1;scores.ms0=msResult.ms0;scores.ms2=msResult.ms2;
 const riskFlag=(homeAttack!==null&&homeAttack<1)||(awayConcede!==null&&awayConcede<1)||lambda===null||defenseRiskCount>0;
 const recommended=[['1,5 Üst',championsRule?null:generalScore],['2,5 Alt',fullLambda===null?null:100-poissonOver(fullLambda,2)],['İY 0,5 Üst',championsRule?null:adjustedHalfScore],['İY 1,5 Üst',poissonOver(lambda,1)]].filter(x=>x[1]!==null).sort((x,y)=>y[1]-x[1]);
@@ -217,7 +231,7 @@ const systemMsCards=[['MS 1',msResult.ms1],['MS 0',msResult.ms0],['MS 2',msResul
 }).join('');
 const systemPanel='<div class="panel full system-panel" style="border-width:1px;padding:7px"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🎯 Sistem Önerisi</span>'+systemDataWarning+'</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4>'+recommendedStatus+over25Status+half05Status+championsStatus+'<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:5px">'+systemMsCards+'</div></div><small>Yeşil: model puanı 80’in üzerinde ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+'</div>';
 
-const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult)};
+const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult,privateAwayForm)};
 const all=enabled===null;
 if(!all){
  for(const key of Object.keys(scores)){
