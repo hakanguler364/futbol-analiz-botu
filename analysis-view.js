@@ -303,9 +303,10 @@ if(enabled===null){
  privateTrial='<div class="inner"><h4>Deneme MS Puanı</h4><div class="metric"><b>'+
   labels.map((label,index)=>label+' '+trialVotes[index]).join(' · ')+'</b></div><small>'+comparison+
   ' · İlk yarı '+(half?half.join('-'):'—')+' · Maç sonu '+(full?full.join('-')+' ('+labels[actual]+')':'—')+
-  '</small>'+warning+'</div>';
+  '</small>'+warning+'<details style="margin-top:8px"><summary>Dört kriterin dayanağı</summary>'+
+  privateDefense+privateForm+privateRivalry+'</details></div>';
 }
-const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult,privateAwayForm,privateDefense+privateForm+privateRivalry+privateTrial)};
+const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult,privateAwayForm,privateTrial)};
 const all=enabled===null;
 if(!all){
  for(const key of Object.keys(scores)){
