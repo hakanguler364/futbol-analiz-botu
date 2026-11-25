@@ -82,12 +82,13 @@ const homeHalf=verifiedVenueGames(a,'home','first_half_scored','first_half_conce
 const awayHalf=verifiedVenueGames(b,'away','first_half_scored','first_half_conceded');
 const averageHalf=games=>games.reduce((sum,game)=>sum+game.first_half_scored+game.first_half_conceded,0)/games.length;
 const lambda=homeHalf.length>=5&&awayHalf.length>=5?(averageHalf(homeHalf)+averageHalf(awayHalf))/2:null;
-const fullDataReady=(section,venue)=>valid(section)&&section.count>=5&&
- goalCountValid(section.scored)&&goalCountValid(section.conceded)&&
- verifiedVenueGames(section,venue,'scored','conceded').length>=5;
+const fullCounts=[verifiedVenueGames(a,'home','scored','conceded').length,
+ verifiedVenueGames(b,'away','scored','conceded').length];
+const fullDataReady=(section,count)=>valid(section)&&section.count>=5&&
+ goalCountValid(section.scored)&&goalCountValid(section.conceded)&&count>=5;
 
 const poissonOver=(l,k)=>l===null?null:100*(1-Math.exp(-l)*Array.from({length:k+1},(_,i)=>{let factorial=1;for(let j=2;j<=i;j++)factorial*=j;return Math.pow(l,i)/factorial;}).reduce((x,y)=>x+y,0));
-const fullLambda=fullDataReady(a,'home')&&fullDataReady(b,'away')?((a.scored+a.conceded)/a.count+(b.scored+b.conceded)/b.count)/2:null;
+const fullLambda=fullDataReady(a,fullCounts[0])&&fullDataReady(b,fullCounts[1])?((a.scored+a.conceded)/a.count+(b.scored+b.conceded)/b.count)/2:null;
 const avg=(s,field)=>valid(s)?(s[field]/s.count):null;
 const fmtAvg=v=>v===null?'Veri yok':v.toFixed(2).replace('.',',');
 const goalValueColor=v=>v===null?'':v>1?'score-green':v<1?'score-red':'';
@@ -124,6 +125,7 @@ const halfScore=poissonOver(lambda,0),adjustedHalfScore=halfScore===null?null:Ma
 const scores={over15:generalScore,homeHalf:homeHalf.length>=5?Math.round(100*homeHalf.filter(game=>game.first_half_scored>0).length/homeHalf.length):null,awayHalf:awayHalf.length>=5?Math.round(100*awayHalf.filter(game=>game.first_half_scored>0).length/awayHalf.length):null,half05:adjustedHalfScore,half15:poissonOver(lambda,1)};
 const championsRule=r.champions_league_data_rule===true;
 let championsHalfRisk=false,championsHomeHalfRisk=false;
+let championsFullCounts=null,halfCounts=[homeHalf.length,awayHalf.length];
 if(championsRule){
  const kickoffDay=r.date.slice(0,10);
  const year=Number(kickoffDay.slice(0,4));
@@ -138,6 +140,8 @@ if(championsRule){
  const fullAway=latestWithScores(awayRows,'scored','conceded');
  const halfHome=latestWithScores(homeRows,'first_half_scored','first_half_conceded');
  const halfAway=latestWithScores(awayRows,'first_half_scored','first_half_conceded');
+ championsFullCounts=[fullHome.length,fullAway.length];
+ halfCounts=[halfHome.length,halfAway.length];
  const averageTotal=(rows,scored,conceded)=>rows.reduce((sum,row)=>sum+row[scored]+row[conceded],0)/rows.length;
  const rate=(rows,field)=>100*rows.filter(row=>row[field]>0).length/rows.length;
  scores.over15=fullHome.length===5&&fullAway.length===5
@@ -174,21 +178,25 @@ const goalConflict=goalDataReady&&msLeader&&((msLeader[0]==='MS 1'&&homeGoalEdge
 const goalConflictWarning=goalConflict?'<div class="inner" style="border:2px solid #ef4444;background:rgba(220,38,38,.12);padding:12px;border-radius:8px;margin-top:12px"><h4 style="color:#ff6b6b">⚠️ SİSTEM ÖNERİSİNDE GOL VERİSİ TUTARSIZLIĞI</h4><p>Önerilen '+msLeader[0]+' sonucu, takımların gol atma ve gol yeme ortalamalarıyla çelişiyor. Bu nedenle maç sonucu önerisi riskli olabilir; yalnızca MS puanına dayanarak karar vermeyin.</p><p><small>Ev sahibi: maç başına '+homeAttackAvg.toFixed(2)+' gol atıyor, '+homeDefenseAvg.toFixed(2)+' gol yiyor. Deplasman: maç başına '+awayAttackAvg.toFixed(2)+' gol atıyor, '+awayDefenseAvg.toFixed(2)+' gol yiyor.</small></p><small>Gol verilerinin işaret ettiği taraf: '+(homeGoalEdge>0?'Ev sahibi': 'Deplasman')+'. Bu karşılaştırma kesin maç sonucu değildir.</small></div>':'';
 
 const over25Score=poissonOver(fullLambda,2);
-const optionRow=(market,label,score,extraRisk=false)=>{
+const optionRow=(market,label,score,extraRisk=false,counts=null)=>{
  const points=Number.isFinite(score)?Math.round(score):null;
  const playable=points!==null&&points>80&&!extraRisk;
  if(playable&&archive&&market)archive[market]=points;
  const background=playable?'#75e8a6':'#ff858e';
  const status=points===null?'Yetersiz veri':points+' puan'+(playable?'':' · Riskli');
- return '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin:3px 0;padding:3px 7px;border-radius:5px;background:'+background+';color:#101826"><span>'+label+'</span><b style="text-align:right">'+status+'</b></div>';
+ const sample=points===null&&counts
+  ?'<small style="display:block;color:inherit">Doğrulanmış maç: İç saha '+counts[0]+' · Deplasman '+counts[1]+
+   (counts.some(count=>count<5)?' · En az 5’er maç gerekli':' · Gol toplamları eksik veya geçersiz')+'</small>'
+  :'';
+ return '<div style="margin:3px 0;padding:3px 7px;border-radius:5px;background:'+background+';color:#101826"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span>'+label+'</span><b style="text-align:right">'+status+'</b></div>'+sample+'</div>';
 };
 if(msLeader)optionRow(msLeader[0],msLeader[0],msLeader[1],Boolean(msClose||goalConflict));
 const recommendedStatus=safest?optionRow(safest[0],'⚽ '+safest[0],safest[1],Boolean(riskFlag&&safest[0]==='İY 0,5 Üst')):'';
-const over25Status=optionRow('2,5 Üst','⚽ 2,5 Üst',over25Score);
-const championsOption=(market,label,key,risk=false)=>optionRow(market,label,scores[key],risk);
+const over25Status=optionRow('2,5 Üst','⚽ 2,5 Üst',over25Score,false,fullCounts);
+const championsOption=(market,label,key,risk=false)=>optionRow(market,label,scores[key],risk,key==='over15'?championsFullCounts:halfCounts);
 const half05Status=championsRule
  ?championsOption('İY 0,5 Üst','⏱️ İlk Yarı 0,5 Üst','half05',championsHalfRisk)
- :optionRow('İY 0,5 Üst','⏱️ İlk Yarı 0,5 Üst',adjustedHalfScore,Boolean(riskFlag));
+ :optionRow('İY 0,5 Üst','⏱️ İlk Yarı 0,5 Üst',adjustedHalfScore,Boolean(riskFlag),halfCounts);
 const championsStatus=championsRule
  ?championsOption('1,5 Üst','⚽ 90 dk 1,5 Üst','over15')+
   championsOption(null,'Ev ilk yarı gol atar','homeHalf',championsHomeHalfRisk)
