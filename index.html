@@ -529,7 +529,7 @@ results[id]=r;
 recordLeagueHealth(games.find(m=>String(m.id)===String(id)),r);
 const state=el('state-'+id);
 if(state){
-const view=r.view||analysisView(r,null);
+const view=r.view||analysisView(r,null,null,games.find(m=>String(m.id)===String(id)));
 if(view.counts){dataCounts[id]=view.counts;const warning=el('data-warning-'+id);if(warning)warning.innerHTML=dataWarning(id);}
 predictionScores[id]=view.scores;
 if(view.insufficient)r.insufficient=view.insufficient;
