@@ -119,10 +119,45 @@ const awayDefenseRisk=awayHalfAttack!==null&&homeHalfDefense!==null&&awayHalfAtt
 const defenseRiskCount=Number(homeDefenseRisk)+Number(awayDefenseRisk);
 const halfScore=poissonOver(lambda,0),adjustedHalfScore=halfScore===null?null:Math.max(0,halfScore-15*defenseRiskCount),generalScore=poissonOver(fullLambda,1);
 const scores={over15:generalScore,homeHalf:pct(a,'home','first_half_scored'),awayHalf:pct(b,'away','first_half_scored'),half05:adjustedHalfScore,half15:poissonOver(lambda,1)};
+const championsRule=r.champions_league_data_rule===true;
+let championsHalfRisk=false,championsHomeHalfRisk=false;
+if(championsRule){
+ const kickoffDay=r.date.slice(0,10);
+ const year=Number(kickoffDay.slice(0,4));
+ const seasonStart=(year-(Number(kickoffDay.slice(5,7))<7))+'-07-01';
+ const venueResults=(section,venue)=>(section?.venue_games||section?.games||[])
+  .filter(row=>row.champions_league===true&&row.venue===venue&&row.date>=seasonStart&&row.date<kickoffDay)
+  .sort((left,right)=>right.date.localeCompare(left.date));
+ const latestWithScores=(rows,scored,conceded)=>rows.filter(row=>
+  [row[scored],row[conceded]].every(goals=>Number.isInteger(goals)&&goals>=0)).slice(0,5);
+ const homeRows=venueResults(a,'home'),awayRows=venueResults(b,'away');
+ const fullHome=latestWithScores(homeRows,'scored','conceded');
+ const fullAway=latestWithScores(awayRows,'scored','conceded');
+ const halfHome=latestWithScores(homeRows,'first_half_scored','first_half_conceded');
+ const halfAway=latestWithScores(awayRows,'first_half_scored','first_half_conceded');
+ const averageTotal=(rows,scored,conceded)=>rows.reduce((sum,row)=>sum+row[scored]+row[conceded],0)/rows.length;
+ const rate=(rows,field)=>100*rows.filter(row=>row[field]>0).length/rows.length;
+ scores.over15=fullHome.length===5&&fullAway.length===5
+  ?poissonOver((averageTotal(fullHome,'scored','conceded')+averageTotal(fullAway,'scored','conceded'))/2,1):null;
+ scores.homeHalf=null;
+ scores.half05=null;
+ if(halfHome.length===5&&halfAway.length===5){
+  const homeAttackRate=rate(halfHome,'first_half_scored');
+  const awayConcedeRate=rate(halfAway,'first_half_conceded');
+  const homeRisk=homeAttackRate>75&&awayConcedeRate<40;
+  const awayRisk=rate(halfAway,'first_half_scored')>75&&rate(halfHome,'first_half_conceded')<40;
+  const halfMean=(averageTotal(halfHome,'first_half_scored','first_half_conceded')+
+   averageTotal(halfAway,'first_half_scored','first_half_conceded'))/2;
+  scores.homeHalf=(homeAttackRate+awayConcedeRate)/2;
+  scores.half05=Math.max(0,poissonOver(halfMean,0)-15*(Number(homeRisk)+Number(awayRisk)));
+  championsHalfRisk=homeRisk||awayRisk;
+  championsHomeHalfRisk=homeRisk;
+ }
+}
 const msResult=matchResultScores(a,b,h);
 scores.ms1=msResult.ms1;scores.ms0=msResult.ms0;scores.ms2=msResult.ms2;
 const riskFlag=(homeAttack!==null&&homeAttack<1)||(awayConcede!==null&&awayConcede<1)||lambda===null||defenseRiskCount>0;
-const recommended=[['1,5 Üst',generalScore],['2,5 Alt',fullLambda===null?null:100-poissonOver(fullLambda,2)],['İY 0,5 Üst',adjustedHalfScore],['İY 1,5 Üst',poissonOver(lambda,1)]].filter(x=>x[1]!==null).sort((x,y)=>y[1]-x[1]);
+const recommended=[['1,5 Üst',championsRule?null:generalScore],['2,5 Alt',fullLambda===null?null:100-poissonOver(fullLambda,2)],['İY 0,5 Üst',championsRule?null:adjustedHalfScore],['İY 1,5 Üst',poissonOver(lambda,1)]].filter(x=>x[1]!==null).sort((x,y)=>y[1]-x[1]);
 const safest=recommended.find(x=>!riskFlag||x[0]!=='İY 0,5 Üst')||recommended[0];
 const msOptions=[['MS 1',msResult.ms1],['MS 0',msResult.ms0],['MS 2',msResult.ms2]].filter(x=>Number.isFinite(x[1])).sort((a,b)=>b[1]-a[1]);
 const msLeader=msOptions[0],msRisk=msOptions[1];
@@ -139,7 +174,7 @@ const over25Score=poissonOver(fullLambda,2);
 const optionRow=(market,label,score,extraRisk=false)=>{
  const points=Number.isFinite(score)?Math.round(score):null;
  const playable=points!==null&&points>80&&!extraRisk;
- if(playable&&archive)archive[market]=points;
+ if(playable&&archive&&market)archive[market]=points;
  const color=playable?'#75e8a6':'#ff858e';
  const status=playable?'🟢 OYNANABİLİR':'🔴 RİSKLİ';
  return '<div class="metric"><span>'+label+'</span><b style="color:'+color+'">'+(points===null?'Veri yetersiz':points+' puan')+' · '+status+'</b></div>';
@@ -147,9 +182,17 @@ const optionRow=(market,label,score,extraRisk=false)=>{
 const msStatus=msLeader?optionRow(msLeader[0],'🏆 '+msLeader[0],msLeader[1],Boolean(msClose||goalConflict)):'';
 const recommendedStatus=safest?optionRow(safest[0],'⚽ '+safest[0],safest[1],Boolean(riskFlag&&safest[0]==='İY 0,5 Üst')):'';
 const over25Status=optionRow('2,5 Üst','⚽ 2,5 Üst',over25Score);
-const half05Status=optionRow('İY 0,5 Üst','⏱️ İlk Yarı 0,5 Üst',adjustedHalfScore,Boolean(riskFlag));
+const championsOption=(market,label,key,risk=false)=>scores[key]===null
+ ?metric(label,'Veri yetersiz'):optionRow(market,label,scores[key],risk);
+const half05Status=championsRule
+ ?championsOption('İY 0,5 Üst','⏱️ İlk Yarı 0,5 Üst','half05',championsHalfRisk)
+ :optionRow('İY 0,5 Üst','⏱️ İlk Yarı 0,5 Üst',adjustedHalfScore,Boolean(riskFlag));
+const championsStatus=championsRule
+ ?championsOption('1,5 Üst','⚽ 90 dk 1,5 Üst','over15')+
+  championsOption(null,'Ev ilk yarı gol atar','homeHalf',championsHomeHalfRisk)
+ :'';
 const systemTeams=esc(r.home)+' - '+esc(r.away);
-const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4><h4>Seçeneklerin ayrı değerlendirmesi</h4>'+matchResultCards(msResult)+msStatus+recommendedStatus+over25Status+half05Status+'</div><small>Yeşil: model puanı 80’in üzerinde ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+'</div>';
+const systemPanel='<div class="panel full system-panel"><h3>🎯 Sistem Önerisi</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4><h4>Seçeneklerin ayrı değerlendirmesi</h4>'+matchResultCards(msResult)+msStatus+recommendedStatus+over25Status+half05Status+championsStatus+'</div><small>Yeşil: model puanı 80’in üzerinde ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+'</div>';
 
 const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult)};
 const all=enabled===null;
@@ -157,13 +200,16 @@ if(!all){
  for(const key of Object.keys(scores)){
   const msKey=key.startsWith('ms');
   const visible=msKey?enabled.includes('result')||enabled.includes('system'):
-    ['homeHalf','awayHalf'].includes(key)?enabled.includes('halftime'):enabled.includes('system');
+    ['homeHalf','awayHalf'].includes(key)?enabled.includes('halftime')||
+     (championsRule&&key==='homeHalf'&&enabled.includes('system')):enabled.includes('system');
   if(!visible)delete scores[key];
  }
 }
 return {
  html:Object.entries(panels).filter(([key])=>all||enabled.includes(key)).map(([,html])=>html).join(''),
  scores,
+ ...(championsRule?{insufficient:Object.keys(scores).filter(key=>
+  ['over15','homeHalf','half05'].includes(key)&&scores[key]===null)}:{}),
  ...(all?{counts:{home:venueCount(a,'home',false),away:venueCount(b,'away',false),homeHalf:venueCount(a,'home',true),awayHalf:venueCount(b,'away',true)}}:{})
 };
 }

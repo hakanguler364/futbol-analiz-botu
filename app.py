@@ -569,6 +569,7 @@ def stats(games, team_id):
         opponent = match.get("awayTeam", {}) if home else match.get("homeTeam", {})
         result.append({
             "date": match.get("utcDate", "")[:10],
+            "champions_league": champions_league_fixture(match),
             "opponent": opponent.get("name", "?"),
             "scored": a if home else b,
             "conceded": b if home else a,
@@ -703,6 +704,8 @@ def sportsdb_recent(match, side):
                      "scored": hg if is_home else ag, "conceded": ag if is_home else hg,
                      "first_half_scored": half_home if is_home else half_away,
                      "first_half_conceded": half_away if is_home else half_home,
+                     "champions_league": (event.get("strStatus") or "").strip().casefold() in {"match finished", "ft", "full time"} and
+                     (event.get("strLeague") or "").casefold() == "uefa champions league",
                      "venue": "home" if is_home else "away"})
     rows = list({(r["date"], r["opponent"], r["venue"], r["scored"], r["conceded"]): r for r in rows}.values())
     rows.sort(key=lambda row: row["date"], reverse=True)
@@ -831,9 +834,15 @@ def espn_recent(match, side):
                     raw = raw.get("value", raw.get("displayValue"))
                 return int(float(raw))
             scored, conceded = score(ours), score(theirs)
+            event_league = event.get("league")
+            if isinstance(event_league, dict):
+                event_league = event_league.get("slug")
             rows.append({"date": when.date().isoformat(), "opponent": theirs.get("team", {}).get("displayName", "?"),
                          "scored": scored, "conceded": conceded, "first_half_scored": None,
                          "first_half_conceded": None, "venue": ours.get("homeAway", "?"),
+                         "champions_league": league == "uefa.champions" and
+                         (not event_league or event_league == league) and
+                         status_type.get("name") == "STATUS_FULL_TIME",
                          "_sort": when.isoformat(), "_event_id": event.get("id")})
         except (ValueError, TypeError, KeyError, IndexError):
             continue
@@ -995,6 +1004,26 @@ def sportsdb_head_to_head(match):
             "under25": sum(g["home_goals"] + g["away_goals"] <= 2 for g in games),
             "source": "TheSportsDB (dogrulanmis gecmis maclar)"}
 
+def champions_league_fixture(match):
+    competition = match.get("competition") or {}
+    return (
+        match.get("espn_league") == "uefa.champions"
+        or competition.get("code") == "CL"
+        or (competition.get("name") or "").casefold() == "uefa champions league"
+    )
+
+
+def champions_league_rule(match):
+    if not champions_league_fixture(match):
+        return False
+    try:
+        kickoff = datetime.datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
+    except (KeyError, ValueError, AttributeError):
+        return False
+    turkey_time = datetime.timezone(datetime.timedelta(hours=3))
+    return kickoff.tzinfo is not None and kickoff.astimezone(turkey_time).date() >= datetime.date(2026, 11, 25)
+
+
 def analyze(match):
     home, away = match["homeTeam"], match["awayTeam"]
     output = {
@@ -1003,6 +1032,7 @@ def analyze(match):
         "home": home.get("name"),
         "away": away.get("name"),
         "date": match.get("utcDate"),
+        "champions_league_data_rule": champions_league_rule(match),
         "sections": {},
         "errors": []
     }

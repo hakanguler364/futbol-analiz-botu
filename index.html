@@ -328,12 +328,12 @@ function syncLeagueCheckboxes(){document.querySelectorAll('#leagueCheckboxes inp
 function renderLeagueCheckboxes(){const box=el('leagueCheckboxes');if(!box)return;box.replaceChildren();for(const option of el('leagueFilter').options){if(!option.value)continue;const label=document.createElement('label');label.style.cssText='display:flex;gap:9px;align-items:center;padding:7px;border-bottom:1px solid #2b4057';const input=document.createElement('input');input.type='checkbox';input.value=option.value;input.checked=option.selected;input.onchange=()=>{option.selected=input.checked;el('leagueSummary').textContent=selectedLeagues().length+' lig seçildi. Seçilen maçları getir düğmesine basın.';};label.append(input,document.createTextNode(option.textContent));box.append(label);}}
 function setAllLeagues(checked){for(const option of el('leagueFilter').options)option.selected=checked;syncLeagueCheckboxes();el('leagueSummary').textContent=checked?'Tüm ligler seçildi. Seçilen maçları getir düğmesine basın.':'Seçim temizlendi. Lig seçin veya tüm maçları getirin.';}
 function selectedMatches(){const leagues=selectedLeagues();return games.filter(m=>(!leagues.length||leagues.includes(m.espn_league))&&matchTimeAllowed(m));}
-function predictionChips(scores = {}) {
+function predictionChips(scores = {}, insufficient = []) {
  const msKeys = ['ms1', 'ms0', 'ms2'];
  const other = Object.entries(scores).filter(([key]) => !msKeys.includes(key)).map(([key, value]) => {
   const available = Number.isFinite(value);
   const color = available ? predictionColor(value) : '#aebcd2';
-  return '<span style="display:inline-block;margin:3px;padding:6px 9px;border-radius:9px;border:1px solid '+(available?color:'#526785')+';color:'+color+'">'+predictionLabels[key]+': '+(available?'%'+Math.round(value):'Veri yok')+'</span>';
+  return '<span style="display:inline-block;margin:3px;padding:6px 9px;border-radius:9px;border:1px solid '+(available?color:'#526785')+';color:'+color+'">'+predictionLabels[key]+': '+(available?'%'+Math.round(value):insufficient.includes(key)?'Veri yetersiz':'Veri yok')+'</span>';
  }).join('');
  if (!canViewPanel('result') && !canViewPanel('system')) return other;
  const cells = msKeys.map(key => {
@@ -439,7 +439,7 @@ el('matches').innerHTML=filtered.map(m=>`
 <p class="muted">🏆 <b>${esc(trLeague(m.competition?.name))}</b> · Türkiye saati</p>
 ${canViewPanel('teams')?'<div id="team-info-'+esc(m.id)+'" class="team-info-box"><span>📊 Lig sıralaması yükleniyor...</span><span>💶 Kadro değeri: Veri bulunamadı</span></div>':''}
 
-<div id="data-warning-${esc(m.id)}">${dataWarning(m.id)}</div><div id="prediction-${esc(m.id)}">${predictionChips(predictionScores[m.id])}</div>${enabledPanels===null?`<button onclick="send('${esc(m.id)}')">Telegram'a gönder</button>`:''}
+<div id="data-warning-${esc(m.id)}">${dataWarning(m.id)}</div><div id="prediction-${esc(m.id)}">${predictionChips(predictionScores[m.id],results[m.id]?.view?.insufficient||results[m.id]?.insufficient)}</div>${enabledPanels===null?`<button onclick="send('${esc(m.id)}')">Telegram'a gönder</button>`:''}
 <div id="state-${esc(m.id)}" class="muted">${renderedAnalyses[m.id] || (results[m.id]?.error ? "Analiz alınamadı: "+esc(results[m.id].error) : "⏳ Otomatik analiz hazırlanıyor...")}</div>
 </div>
 `).join('')||(games.length===0?'<p>Seçilen tarihte veri kaynağından maç alınamadı.</p>':'<p>Seçilen filtre ve minimum puan için uygun maç bulunamadı. Analizler henüz tamamlanmadıysa sonuçlar geldikçe liste güncellenir. Tüm maçları görmek için filtre türünü “Tüm maçlar” yapın.</p>');
@@ -584,6 +584,7 @@ if(state){
 const view=r.view||analysisView(r,null);
 if(view.counts){dataCounts[id]=view.counts;const warning=el('data-warning-'+id);if(warning)warning.innerHTML=dataWarning(id);}
 predictionScores[id]=view.scores;
+if(view.insufficient)r.insufficient=view.insufficient;
 const showOdds=canViewPanel('odds');
 state.innerHTML=(showOdds?bettingOddsPanel(games.find(m=>String(m.id)===String(id))):'')+
   (view.html?'<div class="analysis-grid">'+view.html+'</div>':'Bu hesap için açık analiz paneli yok.');
@@ -607,7 +608,7 @@ renderedAnalyses[id]=state.innerHTML;
    const panel=current.querySelector('.odds-panel');
    if(panel)panel.outerHTML=bettingOddsPanel(match);
    renderedAnalyses[id]=current.innerHTML;
- });const chip=el('prediction-'+id);if(chip){chip.innerHTML=predictionChips(predictionScores[id]);}if(el('predictionType').value!=='all')renderGames();
+ });const chip=el('prediction-'+id);if(chip){chip.innerHTML=predictionChips(predictionScores[id],r.insufficient);}if(el('predictionType').value!=='all')renderGames();
 
 
 }
