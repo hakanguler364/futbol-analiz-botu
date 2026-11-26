@@ -213,7 +213,7 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 <div class="card">
 <label for="matchDate"><b>📅 Maç tarihini seç</b></label>
 <p><input type="date" id="matchDate" onchange="load()"></p>
-<button onclick="today()">Günlük maçları getir</button>
+<button onclick="showSelectedMatches()">Günlük maçları getir</button>
 </div>
 
 <section class="card" id="recommendationResults" hidden>
@@ -398,6 +398,7 @@ el('recommendationResults').hidden = !canViewPanel('system') || el('accountNav')
 const recommendationPollInterval = 30000;
 let recommendationTimer;
 let recommendationController;
+let recommendationAfterAnalysisTimer;
 let recommendationRequest = 0;
 function recentRecommendationDay(date){
  const today = localDate();
@@ -490,9 +491,19 @@ async function loadRecommendationResults(manual = false){
 }
 document.addEventListener('visibilitychange', () => {
  if(document.hidden) clearTimeout(recommendationTimer);
- else if(recentRecommendationDay(el('matchDate').value)) loadRecommendationResults();
+ else if(el('matchDate').value >= localDate() || recentRecommendationDay(el('matchDate').value)) loadRecommendationResults();
 });
+function refreshFutureRecommendations(){
+ if(el('recommendationResults').hidden || el('matchDate').value <= localDate() || recommendationAfterAnalysisTimer) return;
+ recommendationAfterAnalysisTimer = setTimeout(() => {
+  recommendationAfterAnalysisTimer = undefined;
+  if(recommendationController) refreshFutureRecommendations();
+  else loadRecommendationResults();
+ }, 5000);
+}
 function clearRecommendationResults(){
+ clearTimeout(recommendationAfterAnalysisTimer);
+ recommendationAfterAnalysisTimer = undefined;
  recommendationRequest++;
  clearTimeout(recommendationTimer);
  recommendationController?.abort();
@@ -520,6 +531,7 @@ const analysisRun=runId;
 try{
 const r=await api('/api/analyze/'+id);
 if(analysisRun!==runId)return;
+refreshFutureRecommendations();
 if(!results[id]){
 done++;
 if(r.status==='complete')ok++;
