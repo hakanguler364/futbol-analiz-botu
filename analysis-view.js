@@ -66,6 +66,13 @@ function analysisView(r, enabled, archive=null, fixture=null) {
 const a=r.sections?.home_last5,b=r.sections?.away_last5;
 const h=r.sections?.head_to_head_last10;
 const venueCount=(section,venue,half)=>{const rows=(section?.venue_games||section?.games||[]).filter(x=>x.venue===venue);return rows.filter(x=>half?(Number.isFinite(x.first_half_scored)&&Number.isFinite(x.first_half_conceded)):true).length;};
+const counts={
+ home:venueCount(a,'home',false),
+ away:venueCount(b,'away',false),
+ homeHalf:venueCount(a,'home',true),
+ awayHalf:venueCount(b,'away',true)
+};
+const limitedMatchData=Math.min(...Object.values(counts))<8;
 const color=p=>p>=75?'#34e981':p>=50?'#ffcf56':'#ff7889';
 const scoreClass=p=>p>=75?'score-green':p>=50?'score-yellow':'score-red';
 const metric=(label,value)=>'<div class="metric"><span>'+label+'</span><b>'+value+'</b></div>';
@@ -194,10 +201,10 @@ const goalConflictWarning=goalConflict?'<div class="inner" style="border:2px sol
 const over25Score=poissonOver(fullLambda,2);
 const optionRow=(market,label,score,extraRisk=false,counts=null)=>{
  const points=Number.isFinite(score)?Math.round(score):null;
- const playable=points!==null&&points>80&&!extraRisk;
+ const playable=points!==null&&points>80&&!extraRisk&&!limitedMatchData;
  if(playable&&archive&&market)archive[market]=points;
  const background=playable?'#75e8a6':'#ff858e';
- const status=points===null?'Yetersiz veri':points+' puan'+(playable?'':' · Riskli');
+ const status=points===null?'Yetersiz veri':points+' puan'+(playable?'':limitedMatchData?' · Sınırlı veri':' · Riskli');
  const sample=points===null&&counts
   ?'<small style="display:block;color:inherit">Doğrulanmış maç: İç saha '+counts[0]+' · Deplasman '+counts[1]+
    (counts.some(count=>count<5)?' · En az 5’er maç gerekli':' · Gol toplamları eksik veya geçersiz')+'</small>'
@@ -226,8 +233,8 @@ const systemDataWarning=insufficientSystemData
 const systemMsCards=[['MS 1',msResult.ms1],['MS 0',msResult.ms0],['MS 2',msResult.ms2]].map(([label,score])=>{
  const available=Number.isFinite(score);
  const risky=msLeader?.[0]===label&&Boolean(msClose||goalConflict);
- const background=available&&score>=80&&!risky&&!limitedMsData?'#75e8a6':'#ff858e';
- return '<div style="padding:4px;text-align:center;border-radius:5px;background:'+background+';color:#101826"><div>'+label+'</div><strong>'+(available?score:'—')+'</strong>'+(limitedMsData?'<small style="display:block;color:inherit">Sınırlı veri</small>':risky?'<small style="display:block;color:inherit">Riskli</small>':'')+'</div>';
+ const background=available&&score>=80&&!risky&&!limitedMsData&&!limitedMatchData?'#75e8a6':'#ff858e';
+ return '<div style="padding:4px;text-align:center;border-radius:5px;background:'+background+';color:#101826"><div>'+label+'</div><strong>'+(available?score:'—')+'</strong>'+(limitedMsData||limitedMatchData?'<small style="display:block;color:inherit">Sınırlı veri</small>':risky?'<small style="display:block;color:inherit">Riskli</small>':'')+'</div>';
 }).join('');
 const systemPanel='<div class="panel full system-panel" style="border-width:1px;padding:7px"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🎯 Sistem Önerisi</span>'+systemDataWarning+'</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4>'+recommendedStatus+over25Status+half05Status+championsStatus+'<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:5px">'+systemMsCards+'</div></div><small>Yeşil: model puanı 80’in üzerinde ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+'</div>';
 
@@ -329,6 +336,7 @@ return {
  html:Object.entries(panels).filter(([key])=>all||enabled.includes(key)).map(([,html])=>html).join(''),
  scores,
  insufficient:Object.keys(scores).filter(key=>scores[key]===null),
- ...(all?{counts:{home:venueCount(a,'home',false),away:venueCount(b,'away',false),homeHalf:venueCount(a,'home',true),awayHalf:venueCount(b,'away',true)}}:{})
+ limitedMatchData,
+ ...(all?{counts}:{})
 };
 }

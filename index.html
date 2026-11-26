@@ -350,7 +350,7 @@ function kickoffOrder(match) {
 function compareKickoff(a,b) {
  return (kickoffOrder(a)-kickoffOrder(b)) || String(a.id).localeCompare(String(b.id));
 }
-function predictionMatches(){const type=el('predictionType').value,min=Number(el('predictionMin').value);return selectedMatches().filter(m=>(type==='all'||(!results[m.id]&&!predictionScores[m.id])||(Number.isFinite(predictionScores[m.id]?.[type])&&predictionScores[m.id][type]>=min))).sort(compareKickoff);}
+function predictionMatches(){const type=el('predictionType').value,min=Number(el('predictionMin').value);return selectedMatches().filter(m=>(type==='all'||(!results[m.id]&&!predictionScores[m.id])||(!results[m.id]?.limitedMatchData&&Number.isFinite(predictionScores[m.id]?.[type])&&predictionScores[m.id][type]>=min))).sort(compareKickoff);}
 function dataWarning(id){
  const d=dataCounts[id];if(!d)return '';
  const low=Math.min(d.home,d.away,d.homeHalf,d.awayHalf);
@@ -380,7 +380,7 @@ function bettingOddsPanel(m){
  return '<section class="odds-panel"><div class="odds-title">📊 Bahis Oranları ve Dağılımı</div><div class="odds-grid">'+tiles+'</div>'+section+'<div class="odds-note">Oran kaynağı: '+source+shareSource+' · Son güncelleme: '+updated+'<br>Yüzdeler yalnızca doğrulanmış bahis tercih verisi varsa gösterilir. Oranlar model tahmin puanlarına dahil edilmez.</div></section>';
 }
 function renderGames(){
-const filtered=predictionMatches();const type=el('predictionType').value;el('predictionSummary').textContent=type==='all'?'Tüm maçlar gösteriliyor.':filtered.filter(m=>Number.isFinite(predictionScores[m.id]?.[type])&&predictionScores[m.id][type]>=Number(el('predictionMin').value)).length+' uygun maç · '+Object.keys(predictionScores).length+'/'+games.length+' maç hesaplandı; hesaplanmayan maçlar geçici olarak gösteriliyor';
+const filtered=predictionMatches();const type=el('predictionType').value;el('predictionSummary').textContent=type==='all'?'Tüm maçlar gösteriliyor.':filtered.filter(m=>!results[m.id]?.limitedMatchData&&Number.isFinite(predictionScores[m.id]?.[type])&&predictionScores[m.id][type]>=Number(el('predictionMin').value)).length+' uygun maç · '+Object.keys(predictionScores).length+'/'+games.length+' maç hesaplandı; hesaplanmayan maçlar geçici olarak gösteriliyor';
 el('matches').innerHTML=filtered.map(m=>`
 <div class="match">
 <div class="match-head"><b>🕒 ${esc(kickoffTR(m.utcDate))}</b><span class="muted">⚽ Maç Analizi</span></div><div class="team-versus"><div class="match-team match-team-home">${badge(m.homeTeam)}<strong>${esc(m.homeTeam?.name)}</strong></div><span class="versus-label">VS</span><div class="match-team match-team-away">${badge(m.awayTeam)}<strong>${esc(m.awayTeam?.name)}</strong></div></div>
@@ -544,6 +544,7 @@ if(state){
 const view=r.view||analysisView(r,null,null,games.find(m=>String(m.id)===String(id)));
 if(view.counts){dataCounts[id]=view.counts;const warning=el('data-warning-'+id);if(warning)warning.innerHTML=dataWarning(id);}
 predictionScores[id]=view.scores;
+r.limitedMatchData=view.limitedMatchData;
 if(view.insufficient)r.insufficient=view.insufficient;
 const showOdds=canViewPanel('odds');
 state.innerHTML=(showOdds?bettingOddsPanel(games.find(m=>String(m.id)===String(id))):'')+
