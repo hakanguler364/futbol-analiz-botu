@@ -1173,8 +1173,8 @@ def analyze(match):
         try:
             if key == "head_to_head_last10":
                 value = espn_head_to_head(match) if match.get("source") == "ESPN" else sportsdb_head_to_head(match)
-                # ESPN can omit older seasons; try verified alternative results.
-                if match.get("source") == "ESPN" and (not value or value.get("count", 0) < 5):
+                # Try a second source whenever the general last-10 sample is incomplete.
+                if match.get("source") == "ESPN" and (not value or value.get("count", 0) < 10):
                     try:
                         alternative = sportsdb_head_to_head(match.get("sportsdb_fallback_match") or match)
                         if alternative and alternative.get("games"):
