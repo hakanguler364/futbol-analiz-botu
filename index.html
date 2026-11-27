@@ -349,9 +349,11 @@ async function loadTeamInfo(m){
    throw error;
   }));
   if(!node.isConnected)return;
-  const rank=v=>Number.isInteger(v)&&v>0?v+'. sıra':'Veri bulunamadı';
-  node.innerHTML='<span>🏠 '+esc(m.homeTeam?.name)+': <b>'+rank(d.home_rank)+'</b> · Kadro değeri: <b>Veri bulunamadı</b></span><span>✈️ '+esc(m.awayTeam?.name)+': <b>'+rank(d.away_rank)+'</b> · Kadro değeri: <b>Veri bulunamadı</b></span>';
- }catch(e){if(node.isConnected)node.textContent='Lig sırası ve kadro değeri: Veri bulunamadı';}
+  node.innerHTML=[[m.homeTeam?.name,d.home_rank],[m.awayTeam?.name,d.away_rank]]
+   .filter(([,rank])=>Number.isInteger(rank)&&rank>0)
+   .map(([name,rank])=>'<span>'+esc(name)+': <b>'+rank+'. sıra</b></span>').join('');
+  node.hidden=!node.innerHTML;
+ }catch(e){if(node.isConnected)node.hidden=true;}
 }
 const predictionLabels={over15:'90 dk 1,5 Üst',homeHalf:'Ev ilk yarı gol atar',awayHalf:'Deplasman ilk yarı gol atar',half05:'İlk yarı 0,5 Üst',half15:'İlk yarı 1,5 Üst',ms1:'MS 1',ms0:'MS 0',ms2:'MS 2'};
 
@@ -361,20 +363,17 @@ function syncLeagueCheckboxes(){document.querySelectorAll('#leagueCheckboxes inp
 function renderLeagueCheckboxes(){const box=el('leagueCheckboxes');if(!box)return;box.replaceChildren();for(const option of el('leagueFilter').options){if(!option.value)continue;const label=document.createElement('label');label.style.cssText='display:flex;gap:9px;align-items:center;padding:7px;border-bottom:1px solid #2b4057';const input=document.createElement('input');input.type='checkbox';input.value=option.value;input.checked=option.selected;input.onchange=()=>{option.selected=input.checked;el('leagueSummary').textContent=selectedLeagues().length+' lig seçildi. Seçilen maçları getir düğmesine basın.';};label.append(input,document.createTextNode(option.textContent));box.append(label);}}
 function setAllLeagues(checked){for(const option of el('leagueFilter').options)option.selected=checked;syncLeagueCheckboxes();el('leagueSummary').textContent=checked?'Tüm ligler seçildi. Seçilen maçları getir düğmesine basın.':'Seçim temizlendi. Lig seçin veya tüm maçları getirin.';}
 function selectedMatches(){const leagues=selectedLeagues();const all=!leagues.length||leagues.length===el('leagueFilter').options.length;return games.filter(m=>(all||leagues.includes(m.espn_league))&&matchTimeAllowed(m));}
-function predictionChips(scores = {}, insufficient = [], marketReady = {}) {
+function predictionChips(scores = {}, marketReady = {}) {
  const msKeys = ['ms1', 'ms0', 'ms2'];
- const other = Object.entries(scores).filter(([key]) => !msKeys.includes(key)).map(([key, value]) => {
-  const available = Number.isFinite(value);
-  const color = available ? (!marketReady[key]?'#ff8794':predictionColor(Math.round(value))) : '#aebcd2';
-  return '<span style="display:inline-block;margin:3px;padding:6px 9px;border-radius:9px;border:1px solid '+(available?color:'#526785')+';color:'+color+'">'+predictionLabels[key]+': '+(available?Math.round(value)+' puan':insufficient.includes(key)?'Veri yetersiz':'Veri yok')+'</span>';
- }).join('');
- if (!canViewPanel('result') && !canViewPanel('system')) return other;
- const cells = msKeys.map(key => {
-  const value = scores[key];
-  const available = Number.isFinite(value);
-  return '<span><b>'+predictionLabels[key]+'</b><strong style="color:'+(available?(!marketReady[key]?'#ff8794':predictionColor(Math.round(value))):'#aebcd2')+'">'+(available?Math.round(value)+' puan':'Veri yok')+'</strong></span>';
- }).join('');
- return other+'<div class="prediction-ms" role="group" aria-label="Maç sonucu">'+cells+'</div>';
+ const color=(key,value)=>marketReady[key]?predictionColor(Math.round(value)):'#ff8794';
+ const other=Object.entries(scores).filter(([key,value])=>!msKeys.includes(key)&&Number.isFinite(value)).map(([key,value])=>
+  '<span style="display:inline-block;margin:3px;padding:6px 9px;border-radius:9px;border:1px solid '+color(key,value)+';color:'+color(key,value)+'">'+predictionLabels[key]+': '+Math.round(value)+' puan</span>'
+ ).join('');
+ if(!canViewPanel('result')&&!canViewPanel('system'))return other;
+ const cells=msKeys.filter(key=>Number.isFinite(scores[key])).map(key=>
+  '<span><b>'+predictionLabels[key]+'</b><strong style="color:'+color(key,scores[key])+'">'+Math.round(scores[key])+' puan</strong></span>'
+ ).join('');
+ return other+(cells?'<div class="prediction-ms" role="group" aria-label="Maç sonucu">'+cells+'</div>':'');
 }
 function kickoffOrder(match) {
  const time=match.utcDate ? Date.parse(match.utcDate) : NaN;
@@ -408,9 +407,11 @@ function bettingOddsPanel(m){
  const hasVerifiedShares=Boolean(data?.bet_percent_source)&&outcomes.every(k=>valid(shares?.[k])&&shares[k]<=100)&&Math.abs(outcomes.reduce((sum,k)=>sum+shares[k],0)-100)<1.1;
  const tiles=outcomes.map((name,i)=>{
   const hasOdds=valid(odds[name])&&odds[name]>1;
-  return '<div class="odds-tile" style="border-color:'+colors[i]+';background:linear-gradient(150deg,'+colors[i]+'22,#10243b)"><small style="color:'+colors[i]+';font-weight:800">'+name+'</small><strong class="odds-price">'+(hasOdds?odds[name].toFixed(2):'Veri yok')+'</strong><small class="odds-preference">'+(hasVerifiedShares?'Oynanma: %'+shares[name].toFixed(1):'Oynanma: Veri yok')+'</small></div>';
+  if(!hasOdds&&!hasVerifiedShares)return '';
+  return '<div class="odds-tile" style="border-color:'+colors[i]+';background:linear-gradient(150deg,'+colors[i]+'22,#10243b)"><small style="color:'+colors[i]+';font-weight:800">'+name+'</small><strong class="odds-price">'+(hasOdds?odds[name].toFixed(2):'')+'</strong><small class="odds-preference">'+(hasVerifiedShares?'Oynanma: %'+shares[name].toFixed(1):'')+'</small></div>';
  }).join('');
- const section=hasVerifiedShares?'<div class="odds-section"><b>👥 Gerçek bahis tercih yüzdeleri</b>'+outcomes.map((name,i)=>'<div class="odds-line"><span class="odds-label">'+name+'</span><div class="odds-track"><div class="odds-fill" style="width:'+shares[name]+'%;background:'+colors[i]+'"></div></div><span class="odds-value">%'+shares[name].toFixed(1)+'</span></div>').join('')+'</div>':'<div class="odds-section"><b>👥 Gerçek bahis tercih yüzdeleri</b><p class="muted">Bu maç için bahis adedine dayalı doğrulanmış oynanma yüzdesi bulunmuyor.</p></div>';
+ const section=hasVerifiedShares?'<div class="odds-section"><b>👥 Gerçek bahis tercih yüzdeleri</b>'+outcomes.map((name,i)=>'<div class="odds-line"><span class="odds-label">'+name+'</span><div class="odds-track"><div class="odds-fill" style="width:'+shares[name]+'%;background:'+colors[i]+'"></div></div><span class="odds-value">%'+shares[name].toFixed(1)+'</span></div>').join('')+'</div>':'';
+ if(!tiles&&!section)return '';
  const source=data?.source?esc(data.source):'Oranlar yükleniyor';
  const shareSource=hasVerifiedShares?' · Dağılım kaynağı: '+esc(data.bet_percent_source):'';
  const updated=data?.updated_at?esc(data.updated_at):'—';
@@ -423,9 +424,9 @@ el('matches').innerHTML=filtered.map(m=>`
 <div class="match">
 <div class="match-head"><b>🕒 ${esc(kickoffTR(m.utcDate))}</b><span class="muted">⚽ Maç Analizi</span></div><div class="team-versus"><div class="match-team match-team-home">${badge(m.homeTeam)}<strong>${esc(m.homeTeam?.name)}</strong></div><span class="versus-label">VS</span><div class="match-team match-team-away">${badge(m.awayTeam)}<strong>${esc(m.awayTeam?.name)}</strong></div></div>
 <p class="muted">🏆 <b>${esc(trLeague(m.competition?.name))}</b> · Türkiye saati</p>
-${canViewPanel('teams')?'<div id="team-info-'+esc(m.id)+'" class="team-info-box"><span>📊 Lig sıralaması yükleniyor...</span><span>💶 Kadro değeri: Veri bulunamadı</span></div>':''}
+${canViewPanel('teams')?'<div id="team-info-'+esc(m.id)+'" class="team-info-box"><span>📊 Lig sıralaması yükleniyor...</span></div>':''}
 
-<div id="data-warning-${esc(m.id)}">${dataWarning(m.id)}</div><div id="prediction-${esc(m.id)}">${predictionChips(predictionScores[m.id],results[m.id]?.insufficient,results[m.id]?.marketReady)}</div>
+<div id="data-warning-${esc(m.id)}">${dataWarning(m.id)}</div><div id="prediction-${esc(m.id)}">${predictionChips(predictionScores[m.id],results[m.id]?.marketReady)}</div>
 <div class="muted">${canViewPanel('odds')?'<div id="odds-'+esc(m.id)+'">'+bettingOddsPanel(m)+'</div>':''}${renderedAnalyses[m.id]}</div>
 </div>
 `).join('')||(games.length?'<p>Analiz verisi doğrulanmış ve filtreye uyan maç henüz bulunamadı.</p>':'<p>Seçilen tarihte veri kaynağından maç alınamadı.</p>');
@@ -743,7 +744,7 @@ if(!games.length){
 loading=false;
 pumpAnalyses();
 if(failed.length)el('mode').textContent+=' · '+failed.length+' lig yüklenemedi';
-}catch(e){if(current===runId){el('progress').textContent='Maç listesi yüklenemedi.';el('matches').textContent=e.name==='AbortError'?'Maç verisi 150 saniyede alınamadı. Sunucu veya veri sağlayıcısı yanıt vermiyor; yeniden deneyin.':'Veri bulunamadı: '+e.message;}}
+}catch(e){if(current===runId){el('progress').textContent='Maç listesi yüklenemedi.';el('matches').textContent=e.name==='AbortError'?'Maç verisi 150 saniyede alınamadı. Sunucu veya veri sağlayıcısı yanıt vermiyor; yeniden deneyin.':'Maç listesi yüklenemedi.';}}
 }
 
 function analyzeAll(){

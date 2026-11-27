@@ -46,16 +46,16 @@ function matchResultScores(home,away,h2h){
 function matchResultCards(p){
  const entries=[['MS 1','Ev sahibi',p.ms1],['MS 0','Beraberlik',p.ms0],['MS 2','Deplasman',p.ms2]];
  const cards=entries.map(([label,name,score])=>{
-  const available=Number.isFinite(score);
-  return '<div class="ms-score-item"><b>'+label+'</b><small>'+name+'</small><strong style="color:'+(available?predictionColor(score):'#aebcd2')+'">'+(available?score:'—')+'</strong><small>'+(available?'puan':'Veri yok')+'</small></div>';
+  if(!Number.isFinite(score))return '';
+  return '<div class="ms-score-item"><b>'+label+'</b><small>'+name+'</small><strong style="color:'+predictionColor(score)+'">'+score+'</strong><small>puan</small></div>';
  }).join('');
- return '<div class="ms-score-grid">'+cards+'</div>';
+ return cards?'<div class="ms-score-grid">'+cards+'</div>':'';
 }
 function matchResultPanel(p,privateAwayForm,privateTrial){
  const drawRisk=p.ms1!==null&&p.ms0!==null&&Math.abs(p.ms1-p.ms0)<5;
  const drawWarning=drawRisk?'<p style="color:#ffcf56;font-weight:700">⚠️ Beraberlik riski yüksek — MS 1 ile MS 0 arasında 5 puandan az fark var.</p>':'';
  const info=p.breakdown||{};
- const fmt=x=>Number.isFinite(x)?x.toFixed(2):'Veri yok';
+ const fmt=x=>Number.isFinite(x)?x.toFixed(2):'';
  const general='<div class="inner"><h4>📊 Genel Performans</h4><small>Ev sahibi: attığı '+fmt(info.homeScored)+' / yediği '+fmt(info.homeConceded)+' gol/maç</small><p><small>Deplasman: attığı '+fmt(info.awayScored)+' / yediği '+fmt(info.awayConceded)+' gol/maç</small></p></div>';
  const venue='<div class="inner"><h4>🏟️ İç Saha / Deplasman Performansı</h4><small>Ev sahibi iç saha ('+(info.homeVenueCount||0)+' maç): attığı '+fmt(info.homeVenueScored)+' / yediği '+fmt(info.homeVenueConceded)+' gol/maç</small><p><small>Deplasman dış saha ('+(info.awayVenueCount||0)+' maç): attığı '+fmt(info.awayVenueScored)+' / yediği '+fmt(info.awayVenueConceded)+' gol/maç</small></p><small>'+(info.venueGoalsReady?'Gol karşılaştırmasında iç/dış saha %65, genel %35 ağırlıklı.':'İç/dış saha verisi yetersiz: gol karşılaştırmasında genel ortalama kullanılıyor.')+'</small></div>';
  return '<div class="panel full"><h3>🏆 Maç Sonucu (90 Dakika)</h3>'+matchResultCards(p)+privateTrial+drawWarning+general+venue+privateAwayForm+'<small>'+esc(p.note)+'</small></div>';
@@ -76,11 +76,12 @@ const limitedMatchData=Math.min(...Object.values(counts))<8;
 const color=p=>p>=75?'#34e981':p>=50?'#ffcf56':'#ff7889';
 const scoreClass=p=>p>=75?'score-green':p>=50?'score-yellow':'score-red';
 const metric=(label,value)=>'<div class="metric"><span>'+label+'</span><b>'+value+'</b></div>';
-const bar=(label,p)=>{if(p===null)return metric(label,'Veri yok');const v=Math.max(0,Math.min(99,Math.round(p)));return '<div class="metric"><span>'+label+'</span><b class="'+scoreClass(v)+'">'+v+' puan</b></div><div class="bar-track"><div class="bar-fill" style="width:'+v+'%;background:'+color(v)+'"></div></div>';};
+const bar=(label,p)=>{if(p===null)return '';const v=Math.max(0,Math.min(99,Math.round(p)));return '<div class="metric"><span>'+label+'</span><b class="'+scoreClass(v)+'">'+v+' puan</b></div><div class="bar-track"><div class="bar-fill" style="width:'+v+'%;background:'+color(v)+'"></div></div>';};
 const valid=s=>s&&s.data_scope!=='season'&&Number.isFinite(s.count)&&s.count>0;
 const pct=(s,venue,field)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue&&Number.isFinite(x[field]));return g.length?Math.round(100*g.filter(x=>x[field]>0).length/g.length):null;};
-const halfCard=(s,venue,field,label)=>{const all=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue);const g=all.filter(x=>Number.isFinite(x.first_half_scored)&&Number.isFinite(x.first_half_conceded));const hits=g.filter(x=>x[field]>0).length,total=g.reduce((n,x)=>n+x[field],0),p=g.length?Math.round(100*hits/g.length):null;const rows=all.map(x=>'<div class="half-detail-row"><span>'+esc(x.date||'?')+' · '+esc(x.opponent||'?')+'</span><b>'+(Number.isFinite(x.first_half_scored)&&Number.isFinite(x.first_half_conceded)?x.first_half_scored+'-'+x.first_half_conceded:'Skor yok')+'</b></div>').join('');return '<div class="half-mini"><div>'+label+'</div><strong style="color:'+(p===null?'#9aadc4':p>=75?'#4bea8e':'#ffcf56')+'">'+(p===null?'Veri yok':'%'+p)+'</strong><small>'+(p===null?'İlk yarı skoru bulunamadı':hits+'/'+g.length+' maç · '+total+' gol')+'</small><details class="half-detail"><summary>Maçları gör</summary>'+(rows||'<small>Geçmiş maç bulunamadı</small>')+'<small>Skorlar takım açısından: attığı-yediği. Yalnız doğrulanmış ilk yarılar hesaplanır.</small></details></div>';};
-const halfMini='<div class="panel half-mini-panel"><h3>⏱ İlk Yarı Gol Analizi</h3><div class="half-mini-grid">'+halfCard(a,'home','first_half_scored','Ev · Atma')+halfCard(b,'away','first_half_scored','Dep · Atma')+halfCard(a,'home','first_half_conceded','Ev · Yeme')+halfCard(b,'away','first_half_conceded','Dep · Yeme')+'</div><small>Ev: yalnız iç saha · Dep: yalnız dış saha · %75+ yeşil</small></div>';
+const halfCard=(s,venue,field,label)=>{const all=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue);const g=all.filter(x=>Number.isFinite(x.first_half_scored)&&Number.isFinite(x.first_half_conceded));if(!g.length)return '';const hits=g.filter(x=>x[field]>0).length,total=g.reduce((n,x)=>n+x[field],0),p=g.length?Math.round(100*hits/g.length):null;const rows=all.map(x=>'<div class="half-detail-row"><span>'+esc(x.date||'?')+' · '+esc(x.opponent||'?')+'</span><b>'+(Number.isFinite(x.first_half_scored)&&Number.isFinite(x.first_half_conceded)?x.first_half_scored+'-'+x.first_half_conceded:'Skor yok')+'</b></div>').join('');return '<div class="half-mini"><div>'+label+'</div><strong style="color:'+(p===null?'#9aadc4':p>=75?'#4bea8e':'#ffcf56')+'">'+('%'+p)+'</strong><small>'+(p===null?'İlk yarı skoru bulunamadı':hits+'/'+g.length+' maç · '+total+' gol')+'</small><details class="half-detail"><summary>Maçları gör</summary>'+(rows||'<small>Geçmiş maç bulunamadı</small>')+'<small>Skorlar takım açısından: attığı-yediği. Yalnız doğrulanmış ilk yarılar hesaplanır.</small></details></div>';};
+const halfCards=halfCard(a,'home','first_half_scored','Ev · Atma')+halfCard(b,'away','first_half_scored','Dep · Atma')+halfCard(a,'home','first_half_conceded','Ev · Yeme')+halfCard(b,'away','first_half_conceded','Dep · Yeme');
+const halfMini=halfCards?'<div class="panel half-mini-panel"><h3>⏱ İlk Yarı Gol Analizi</h3><div class="half-mini-grid">'+halfCards+'</div><small>Ev: yalnız iç saha · Dep: yalnız dış saha · %75+ yeşil</small></div>':'';
 const goalCountValid=value=>Number.isInteger(value)&&value>=0;
 const verifiedVenueGames=(section,venue,scored,conceded)=>
  (section?.venue_games||section?.games||[]).filter(game=>
@@ -97,20 +98,20 @@ const fullDataReady=(section,count)=>valid(section)&&section.count>=5&&
 const poissonOver=(l,k)=>l===null?null:100*(1-Math.exp(-l)*Array.from({length:k+1},(_,i)=>{let factorial=1;for(let j=2;j<=i;j++)factorial*=j;return Math.pow(l,i)/factorial;}).reduce((x,y)=>x+y,0));
 const fullLambda=fullDataReady(a,fullCounts[0])&&fullDataReady(b,fullCounts[1])?((a.scored+a.conceded)/a.count+(b.scored+b.conceded)/b.count)/2:null;
 const avg=(s,field)=>valid(s)?(s[field]/s.count):null;
-const fmtAvg=v=>v===null?'Veri yok':v.toFixed(2).replace('.',',');
+const fmtAvg=v=>v===null?'':v.toFixed(2).replace('.',',');
 const goalValueColor=v=>v===null?'':v>1?'score-green':v<1?'score-red':'';
-const formRow=(name,s,side)=>{const g=(s?.games||[]).slice(0,5);return '<div class="metric form-team-row"><b class="form-team-name team-name-'+side+'">'+esc(name)+'</b><span>'+ (g.length?g.map(x=>{const won=x.scored>x.conceded,draw=x.scored===x.conceded;return '<span class="form-chip '+(won?'form-win':draw?'form-draw':'form-loss')+'">'+(won?'G':draw?'B':'M')+'</span>';}).join(''):'<small>Son 5 sonuç yok</small>')+'</span></div>';};
+const formRow=(name,s,side)=>{const g=(s?.games||[]).slice(0,5);if(!g.length)return '';return '<div class="metric form-team-row"><b class="form-team-name team-name-'+side+'">'+esc(name)+'</b><span>'+ (g.length?g.map(x=>{const won=x.scored>x.conceded,draw=x.scored===x.conceded;return '<span class="form-chip '+(won?'form-win':draw?'form-draw':'form-loss')+'">'+(won?'G':draw?'B':'M')+'</span>';}).join(''):'<small>Son 5 sonuç yok</small>')+'</span></div>';};
 const teamPanel='<div class="panel"><h3>📊 Son 5 Maç Performansı</h3>'+formRow(r.home,a,'home')+formRow(r.away,b,'away')+'<small>Yalnızca doğrulanmış maç sonuçları</small></div>';
 const goalsPanel='<div class="panel"><h3>⚽ Gol İstatistikleri (Genel)</h3><table class="compact-table"><tr><th>Takım</th><th>Attı</th><th>Yedi</th><th>Ort. Attı</th><th>Ort. Yedi</th></tr>'+[[r.home,a],[r.away,b]].map(([n,x])=>'<tr><td><b class="team-name-'+(n===r.home?'home':'away')+'">'+esc(n)+'</b></td><td class="'+goalValueColor(avg(x,'scored'))+'">'+(valid(x)?x.scored:'—')+'</td><td class="'+goalValueColor(avg(x,'conceded'))+'">'+(valid(x)?x.conceded:'—')+'</td><td>'+fmtAvg(avg(x,'scored'))+'</td><td>'+fmtAvg(avg(x,'conceded'))+'</td></tr>').join('')+'</table><small>Veri kapsamı: '+(a?.count??0)+' / '+(b?.count??0)+' maç</small></div>';
-const venueSummary=(s,venue)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue).slice(0,5);return g.length?g.filter(x=>x.scored>x.conceded).length+'G '+g.filter(x=>x.scored===x.conceded).length+'B '+g.filter(x=>x.scored<x.conceded).length+'M':'Veri yok';};
-const venuePerformance=(s,venue)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue&&Number.isFinite(x.scored)&&Number.isFinite(x.conceded)).slice(0,5);if(g.length<5)return '<span class="muted">Yetersiz veri</span>';const wins=g.filter(x=>x.scored>x.conceded).length,losses=g.filter(x=>x.scored<x.conceded).length,draws=g.filter(x=>x.scored===x.conceded).length;if(draws>=3)return '<span class="muted">Performansı dengeli (beraberlik ağırlıklı)</span>';return wins>=3&&wins>losses?'<span class="score-green">Performansı yüksek</span>':losses>=3&&losses>wins?'<span class="score-red">Performansı düşük</span>':'<span class="muted">Performansı dengeli</span>';};
+const venueSummary=(s,venue)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue).slice(0,5);return g.length?g.filter(x=>x.scored>x.conceded).length+'G '+g.filter(x=>x.scored===x.conceded).length+'B '+g.filter(x=>x.scored<x.conceded).length+'M':'';};
+const venuePerformance=(s,venue)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue&&Number.isFinite(x.scored)&&Number.isFinite(x.conceded)).slice(0,5);if(g.length<5)return '';const wins=g.filter(x=>x.scored>x.conceded).length,losses=g.filter(x=>x.scored<x.conceded).length,draws=g.filter(x=>x.scored===x.conceded).length;if(draws>=3)return '<span class="muted">Performansı dengeli (beraberlik ağırlıklı)</span>';return wins>=3&&wins>losses?'<span class="score-green">Performansı yüksek</span>':losses>=3&&losses>wins?'<span class="score-red">Performansı düşük</span>':'<span class="muted">Performansı dengeli</span>';};
 const avgPanel='<div class="panel"><h3>🏠 Kendi Sahası / Deplasman (Son 5)</h3>'+metric('<span class="team-name-home">'+esc(r.home)+'</span> (Ev)',venueSummary(a,'home')+' · '+venuePerformance(a,'home'))+metric('<span class="team-name-away">'+esc(r.away)+'</span> (Dep)',venueSummary(b,'away')+' · '+venuePerformance(b,'away'))+'</div>';
 const drawRate=h?.count?Math.round(100*h.draws/h.count):null;
 const drawAlert=h?.count>=5&&drawRate!==null&&drawRate>=50;
 const h2hNotice=h?.count>=5?'':('<div class="data-warning '+(h?.count<5?'red':'amber')+'">⚠️ '+(h?.count<5?'DİKKAT! YETERSİZ İKİLİ REKABET VERİSİ':'SINIRLI İKİLİ REKABET VERİSİ')+' <span>Bulunan: '+(h?.count||0)+' maç · Eksik karşılaşmalar olabilir</span></div>');
-const rivalryLabel=(x)=>{if(!x?.count)return 'Veri yok';const w=Number(x.home_wins)||0,d=Number(x.draws)||0,l=Number(x.away_wins)||0;if(d>=Math.ceil(x.count*.5)||Math.abs(w-l)<=1)return 'İkili rekabet dengeli';return w>l?'Ev sahibi galibiyet üstünlüğü':'Deplasman galibiyet üstünlüğü';};
-const rivalryTag=(x)=>'<div class="metric"><span>📈 Galibiyet performansı</span><b>'+rivalryLabel(x)+'</b></div>';
-const rivalryRecent=(games,venueOnly=false)=>{const sorted=(Array.isArray(games)?games:[]).filter(g=>g&&/^\\d{4}-\\d{2}-\\d{2}/.test(String(g.date||''))&&['home','away','draw'].includes(g.winner)&&(!venueOnly||g.at_home===true)).sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);if(!sorted.length)return '<div class="metric"><span>Son 5 ikili maç</span><b>Veri yok</b></div>';const hw=sorted.filter(g=>g.winner==='home').length,aw=sorted.filter(g=>g.winner==='away').length,d=sorted.length-hw-aw;const label=d>=3||hw===aw?'Dengeli':hw>aw?'Ev sahibi üstün':'Deplasman üstün';const first=sorted[0].winner;let streak=0;if(first!=='draw'){for(const g of sorted){if(g.winner!==first)break;streak++;}}return '<div class="metric"><span>Son '+sorted.length+' ikili maç</span><b>'+hw+'G Ev · '+d+'B · '+aw+'G Dep — '+label+'</b></div>'+(streak>=2?'<div class="metric"><span>🔥 Güncel galibiyet serisi</span><b>'+(first==='home'?'Ev sahibi':'Deplasman')+' üst üste '+streak+' galibiyet</b></div>':'<div class="metric"><span>Güncel galibiyet serisi</span><b>Yok</b></div>');};
+const rivalryLabel=(x)=>{if(!x?.count)return '';const w=Number(x.home_wins)||0,d=Number(x.draws)||0,l=Number(x.away_wins)||0;if(d>=Math.ceil(x.count*.5)||Math.abs(w-l)<=1)return 'İkili rekabet dengeli';return w>l?'Ev sahibi galibiyet üstünlüğü':'Deplasman galibiyet üstünlüğü';};
+const rivalryTag=(x)=>!x?.count?'':'<div class="metric"><span>📈 Galibiyet performansı</span><b>'+rivalryLabel(x)+'</b></div>';
+const rivalryRecent=(games,venueOnly=false)=>{const sorted=(Array.isArray(games)?games:[]).filter(g=>g&&/^\\d{4}-\\d{2}-\\d{2}/.test(String(g.date||''))&&['home','away','draw'].includes(g.winner)&&(!venueOnly||g.at_home===true)).sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);if(!sorted.length)return '';const hw=sorted.filter(g=>g.winner==='home').length,aw=sorted.filter(g=>g.winner==='away').length,d=sorted.length-hw-aw;const label=d>=3||hw===aw?'Dengeli':hw>aw?'Ev sahibi üstün':'Deplasman üstün';const first=sorted[0].winner;let streak=0;if(first!=='draw'){for(const g of sorted){if(g.winner!==first)break;streak++;}}return '<div class="metric"><span>Son '+sorted.length+' ikili maç</span><b>'+hw+'G Ev · '+d+'B · '+aw+'G Dep — '+label+'</b></div>'+(streak>=2?'<div class="metric"><span>🔥 Güncel galibiyet serisi</span><b>'+(first==='home'?'Ev sahibi':'Deplasman')+' üst üste '+streak+' galibiyet</b></div>':'<div class="metric"><span>Güncel galibiyet serisi</span><b>Yok</b></div>');};
 const h2hPanel='<div class="panel"><h3>🤝 Kendi Aralarındaki Tüm Doğrulanmış Maçlar</h3>'+h2hNotice+(h?.count?'<div class="metric"><span class="team-name-home">'+esc(r.home)+': <b>'+h.home_wins+'</b></span><span>Beraberlik: <b>'+h.draws+'</b></span><span class="team-name-away">'+esc(r.away)+': <b>'+h.away_wins+'</b></span></div><div class="metric"><span>🤝 Beraberlik oranı</span><b>%'+drawRate+' ('+h.draws+'/'+h.count+')</b></div>'+(h.under25!==undefined?'<div class="metric"><span>⚽ 2,5 Alt</span><b>'+h.under25+'/'+h.count+' — %'+Math.round(100*h.under25/h.count)+'</b></div><div class="metric"><span>2,5 Üst</span><b>'+h.over25+'/'+h.count+'</b></div><div class="metric"><span>KG Var / Yok</span><b>'+h.kg_var+' / '+h.kg_yok+'</b></div>':'')+(drawAlert?'<div class="recommend">⚠️ Beraberlik eğilimi yüksek — dikkat!</div>':'')+(h.under25!==undefined&&h.count>=5&&h.under25/h.count>=0.8?'<div class="recommend">⚠️ 2,5 Alt eğilimi yüksek — geçmiş sonuçlara dayalı uyarı.</div>':'')+rivalryTag(h)+rivalryRecent(h.games)+'<small>'+h.count+' doğrulanmış geçmiş karşılaşma. Eksik maçlar tahmin edilmez. Geçmiş oranlar tahmin garantisi değildir.</small>':'<small>Doğrulanmış geçmiş eşleşme bulunamadı.</small>')+'</div>';
 const venueH=h?.venue_last5;
 const venueHPanel='<div class="panel"><h3>🏟 Kendi Aralarında Ev Sahibinin Sahasında (Son 5)</h3>'+(venueH?.count<5?'<div class="data-warning '+(venueH?.count<3?'red':'amber')+'">⚠️ SINIRLI İÇ SAHA REKABET VERİSİ <span>Bulunan: '+(venueH?.count||0)+' / 5 maç</span></div>':'')+(venueH?.count?
@@ -190,7 +191,7 @@ const safest=recommended.find(x=>!riskFlag||x[0]!=='İY 0,5 Üst')||recommended[
 const msOptions=[['MS 1',msResult.ms1],['MS 0',msResult.ms0],['MS 2',msResult.ms2]].filter(x=>Number.isFinite(x[1])).sort((a,b)=>b[1]-a[1]);
 const msLeader=msOptions[0],msRisk=msOptions[1];
 const msClose=msLeader&&msRisk&&(msLeader[1]-msRisk[1]<5);
-const msSummary=msLeader?'<div class="inner"><h4>🏆 Maç Sonucu Önerisi</h4><div class="metric"><span>En yüksek MS puanı</span><b style="color:'+(msLeader[1]>50?'#34e981':'#ff7889')+'">'+(msClose?'⚠️ ':'')+msLeader[0]+' ('+msLeader[1]+' puan)</b></div></div>':'<p>MS önerisi için yeterli veri yok.</p>';
+const msSummary=msLeader?'<div class="inner"><h4>🏆 Maç Sonucu Önerisi</h4><div class="metric"><span>En yüksek MS puanı</span><b style="color:'+(msLeader[1]>50?'#34e981':'#ff7889')+'">'+(msClose?'⚠️ ':'')+msLeader[0]+' ('+msLeader[1]+' puan)</b></div></div>':'';
 const homeAttackAvg=avg(a,'scored'),homeDefenseAvg=avg(a,'conceded');
 const awayAttackAvg=avg(b,'scored'),awayDefenseAvg=avg(b,'conceded');
 const goalDataReady=[homeAttackAvg,homeDefenseAvg,awayAttackAvg,awayDefenseAvg].every(Number.isFinite)&&a.count>=5&&b.count>=5;
@@ -223,43 +224,37 @@ const marketRisk={
  ms0:msLeader?.[0]==='MS 0'&&Boolean(msClose||goalConflict),
  ms2:msLeader?.[0]==='MS 2'&&Boolean(msClose||goalConflict)
 };
-const optionRow=(market,label,score,extraRisk=false,counts=null,archiveOption=true)=>{
+const optionRow=(market,label,score,extraRisk=false,archiveOption=true)=>{
  const points=Number.isFinite(score)?Math.round(score):null;
- const green=points!==null&&points>=80&&!extraRisk;
+ if(points===null)return '';
+ const green=points>=80&&!extraRisk;
  if(archiveOption&&archive&&market&&green&&points>80&&!showMissingDataRibbon)archive[market]=points;
- const background=points===null?'#351d2b':green?'#75e8a6':'#ff858e';
- const status=points===null?'Yetersiz veri':points+' puan'+(extraRisk?' · Riskli':'');
- const sample=points===null&&counts
-  ?'<small style="display:block;color:inherit">Doğrulanmış maç: İç saha '+counts[0]+' · Deplasman '+counts[1]+
-   (counts.some(count=>count<5)?' · En az 5’er maç gerekli':' · Gol toplamları eksik veya geçersiz')+'</small>'
-  :'';
- return '<div style="margin:3px 0;padding:3px 7px;border-radius:5px;background:'+background+';color:'+(points===null?'#ffd5da':'#101826')+'"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span>'+label+'</span><b style="text-align:right">'+status+'</b></div>'+sample+'</div>';
+ const background=green?'#75e8a6':'#ff858e';
+ const status=points+' puan'+(extraRisk?' · Riskli':'');
+ return '<div style="margin:3px 0;padding:3px 7px;border-radius:5px;background:'+background+';color:#101826"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span>'+label+'</span><b style="text-align:right">'+status+'</b></div></div>';
 };
 if(msLeader&&!limitedMsData)optionRow(msLeader[0],msLeader[0],msLeader[1],Boolean(msClose||goalConflict));
 const recommendedStatus=safest?optionRow(safest[0],'⚽ '+safest[0],safest[1],Boolean(riskFlag&&safest[0]==='İY 0,5 Üst')):'';
 const extraFullStatus=!championsRule&&safest?.[0]!=='1,5 Üst'
- ?optionRow(null,'⚽ 90 dk 1,5 Üst',scores.over15,false,fullCounts,false):'';
-const over25Status=optionRow('2,5 Üst','⚽ 2,5 Üst',over25Score,false,fullCounts);
-const championsOption=(market,label,key,risk=false)=>optionRow(market,label,scores[key],risk,key==='over15'?championsFullCounts:halfCounts);
+ ?optionRow(null,'⚽ 90 dk 1,5 Üst',scores.over15,false,false):'';
+const over25Status=optionRow('2,5 Üst','⚽ 2,5 Üst',over25Score);
+const championsOption=(market,label,key,risk=false)=>optionRow(market,label,scores[key],risk);
 const half05Status=championsRule
  ?championsOption('İY 0,5 Üst','⏱️ İlk Yarı 0,5 Üst','half05',championsHalfRisk)
- :optionRow('İY 0,5 Üst','⏱️ İlk Yarı 0,5 Üst',adjustedHalfScore,Boolean(riskFlag),halfCounts);
+ :optionRow('İY 0,5 Üst','⏱️ İlk Yarı 0,5 Üst',adjustedHalfScore,Boolean(riskFlag));
 const championsStatus=championsRule
  ?championsOption('1,5 Üst','⚽ 90 dk 1,5 Üst','over15')+
   championsOption(null,'Ev ilk yarı gol atar','homeHalf',championsHomeHalfRisk)
  :'';
 const systemTeams=esc(r.home)+' - '+esc(r.away);
-const systemDataWarning=insufficientSystemData
- ?'<span style="flex-shrink:0;color:#ffcf56;font-size:.75rem;font-weight:700">Yetersiz veri</span>'
- :'';
-const systemMsCards=[['MS 1',msResult.ms1],['MS 0',msResult.ms0],['MS 2',msResult.ms2]].map(([label,score])=>{
- const available=Number.isFinite(score);
+const systemMsCards=[['MS 1',msResult.ms1],['MS 0',msResult.ms0],['MS 2',msResult.ms2]]
+ .filter(([,score])=>msReady&&Number.isFinite(score)).map(([label,score])=>{
  const risky=msLeader?.[0]===label&&Boolean(msClose||goalConflict);
- const background=!msReady||!available?'#351d2b':score>=80&&!risky?'#75e8a6':'#ff858e';
- return '<div style="padding:4px;text-align:center;border-radius:5px;background:'+background+';color:'+(!msReady||!available?'#ffd5da':'#101826')+'"><div>'+label+'</div><strong>'+(available?score:'—')+'</strong>'+(!msReady||!available?'<small style="display:block;color:inherit">Sınırlı veri</small>':risky?'<small style="display:block;color:inherit">Riskli</small>':'')+'</div>';
+ const background=score>=80&&!risky?'#75e8a6':'#ff858e';
+ return '<div style="padding:4px;text-align:center;border-radius:5px;background:'+background+';color:#101826"><div>'+label+'</div><strong>'+score+'</strong>'+(risky?'<small style="display:block;color:inherit">Riskli</small>':'')+'</div>';
 }).join('');
 const missingDataRibbon=showMissingDataRibbon?'<div class="missing-data-ribbon" aria-hidden="true">EKSİK VERİ</div>':'';
-const systemPanel='<div class="panel full system-panel'+(showMissingDataRibbon?' has-missing-data':'')+'" style="border-width:1px;padding:7px"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🎯 Sistem Önerisi</span>'+systemDataWarning+'</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4>'+recommendedStatus+extraFullStatus+over25Status+half05Status+championsStatus+'<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:5px">'+systemMsCards+'</div></div><small>Yeşil: ilgili tahminin verisi yeterli, model puanı 80 veya üzeri ve risk kontrolü uygun. Eksik Veri uyarısı maçın diğer analizlerini de kapsar. Model puanı başarı garantisi değildir.</small>'+goalConflictWarning+missingDataRibbon+'</div>';
+const systemPanel=!(recommendedStatus||extraFullStatus||over25Status||half05Status||championsStatus||systemMsCards)?'':'<div class="panel full system-panel'+(showMissingDataRibbon?' has-missing-data':'')+'" style="border-width:1px;padding:7px"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🎯 Sistem Önerisi</span>' +'</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4>'+recommendedStatus+extraFullStatus+over25Status+half05Status+championsStatus+'<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:5px">'+systemMsCards+'</div></div><small>Yeşil: ilgili tahminin verisi yeterli, model puanı 80 veya üzeri ve risk kontrolü uygun. Eksik Veri uyarısı maçın diğer analizlerini de kapsar. Model puanı başarı garantisi değildir.</small>'+goalConflictWarning+missingDataRibbon+'</div>';
 
 const trialVotes=[0,0,0];
 let privateDefense='';
@@ -283,7 +278,7 @@ if(enabled===null){
    goalCountValid(game.scored)&&goalCountValid(game.conceded)&&
    (!r.date||!game.date||game.date.slice(0,10)<r.date.slice(0,10)))
    .sort((left,right)=>String(right.date||'').localeCompare(String(left.date||''))).slice(0,5);
-  if(games.length<5){formScores.push(null);return metric(esc(name),'Yetersiz veri ('+games.length+'/5)');}
+  if(games.length<5){formScores.push(null);return '';}
   const wins=games.filter(game=>game.scored>game.conceded).length;
   const draws=games.filter(game=>game.scored===game.conceded).length;
   const losses=5-wins-draws;
@@ -298,7 +293,7 @@ if(enabled===null){
 const rivalryPoints=(title,record,venue=false)=>{
  const header='<div class="inner"><h4>'+title+'</h4>';
  if(!record?.count||![record.home_wins,record.draws,record.away_wins].every(goalCountValid))
-  return header+'<small>Doğrulanmış maç verisi yok.</small></div>';
+  return '';
  const results=[[r.home,record.home_wins],['Beraberlik',record.draws],[r.away,record.away_wins]];
  const most=Math.max(...results.map(([,count])=>count));
  const leaders=results.filter(([,count])=>count===most);
@@ -333,8 +328,8 @@ if(enabled===null){
  const existingScores=[msResult.ms1,msResult.ms0,msResult.ms2];
  const scoreCells=labels.map((label,index)=>{
   const existing=existingScores[index];
-  return '<div class="ms-score-item"><b>'+label+'</b><small>Mevcut: '+
-   (Number.isFinite(existing)?existing+'/100':'Veri yok')+'</small><strong>'+
+  return '<div class="ms-score-item"><b>'+label+'</b>'+
+   (Number.isFinite(existing)?'<small>Mevcut: '+existing+'/100</small>':'')+'<strong>'+
    trialVotes[index]+'/4</strong><small>Deneme</small></div>';
  }).join('');
  const result=full?full.join('–')+' · '+labels[actual]:'Sonuç bekleniyor';
@@ -344,7 +339,7 @@ if(enabled===null){
   '<details style="margin-top:8px"><summary>Dört kriterin dayanağı</summary>'+
   privateDefense+privateForm+privateRivalry+'</details></div>';
 }
-const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult,privateAwayForm,privateTrial)};
+const panels={system:systemPanel,teams:a?.games?.length||b?.games?.length?teamPanel:'',goals:valid(a)||valid(b)?goalsPanel:'',averages:counts.home||counts.away?avgPanel:'',h2h:h?.count?h2hPanel:"",venue:venueH?.count?venueHPanel:"",halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult,privateAwayForm,privateTrial)};
 const hasAnalysisData=[scores.ms1, scores.over15, scores.half05, scores.half15].some(Number.isFinite);
 const all=enabled===null;
 if(!all){
