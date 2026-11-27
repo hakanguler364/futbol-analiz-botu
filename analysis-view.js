@@ -113,6 +113,15 @@ const halfMatchDetails=halfTeams.filter(([, , ,games])=>games.length)
    '<strong class="team-name-home">'+esc(home?name:opponent)+'</strong> <b>'+homeGoals+'–'+awayGoals+'</b> '+
    '<strong class="team-name-away">'+esc(home?opponent:name)+'</strong></span></div>';
  }).join('')).join('');
+const halfOverPanel=homeHalf.length&&awayHalf.length?(()=>{
+ const mean=(games,field)=>games.reduce((sum,game)=>sum+game[field],0)/games.length;
+ const indicator=(attack,defense)=>fmtAvg((mean(attack,'first_half_scored')+
+  mean(defense,'first_half_conceded'))/2);
+ return '<div class="panel"><h3>⏱ İY 0,5 Üst</h3>'+
+  metric('<span class="team-name-home">'+esc(r.home)+'</span>',indicator(homeHalf,awayHalf))+
+  metric('<span class="team-name-away">'+esc(r.away)+'</span>',indicator(awayHalf,homeHalf))+
+  '<small>Takımın ilk yarı gol atma ortalaması ile rakibinin ilk yarı gol yeme ortalamasının ortalaması.</small></div>';
+})():'';
 const halfMini=(counts.home||counts.away)?'<div class="panel half-mini-panel"><h3>⏱ İlk Yarı Gol Analizi</h3>'+
  goalTableHeader+
  halfRows+'</table>'+(halfMatchDetails?'<details class="half-detail"><summary>Maçları gör</summary>'+halfMatchDetails+'</details>':'')+'</div>':'';
@@ -291,7 +300,7 @@ const systemMsCards=[['MS 1',msResult.ms1],['MS 0',msResult.ms0],['MS 2',msResul
 const missingDataRibbon=showMissingDataRibbon?'<div class="missing-data-ribbon" aria-hidden="true">EKSİK VERİ</div>':'';
 const systemPanel=!(recommendedStatus||extraFullStatus||over25Status||half05Status||championsStatus||systemMsCards)?'':'<div class="panel full system-panel'+(showMissingDataRibbon?' has-missing-data':'')+'" style="border-width:1px;padding:7px"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🎯 Sistem Önerisi</span>' +'</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4>'+recommendedStatus+extraFullStatus+over25Status+half05Status+championsStatus+'<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:5px">'+systemMsCards+'</div></div><small>Yeşil: ilgili tahminin verisi yeterli, model puanı 80 veya üzeri ve risk kontrolü uygun. Eksik Veri uyarısı maçın diğer analizlerini de kapsar. Model puanı başarı garantisi değildir.</small>'+goalConflictWarning+missingDataRibbon+'</div>';
 
-const panels={system:systemPanel,goals:valid(a)||valid(b)?goalsPanel:'',averages:counts.home||counts.away?avgPanel:'',h2h:h2hPanel,venue:venueH?.count?venueHPanel:"",halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult)};
+const panels={system:systemPanel,goals:valid(a)||valid(b)?goalsPanel:'',averages:counts.home||counts.away?avgPanel:'',h2h:h2hPanel,venue:venueH?.count?venueHPanel:"",halftime:halfMini+halfOverPanel,comparison:comparePanel,result:matchResultPanel(msResult)};
 const hasAnalysisData=[scores.ms1, scores.over15, scores.half05, scores.half15].some(Number.isFinite);
 const all=enabled===null;
 if(!all){
