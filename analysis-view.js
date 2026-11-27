@@ -104,9 +104,15 @@ const halfRows=halfTeams.map(([team,side,venue,games])=>{
    :'<td colspan="4"></td>')+'</tr>';
  }).join('');
 const halfMatchDetails=halfTeams.filter(([, , ,games])=>games.length)
- .map(([name,side,venue,games])=>'<h4 class="team-name-'+side+'">'+esc(name)+' · '+venue+'</h4>'+games.map(game=>
-  '<div class="half-detail-row"><span>'+esc(game.date||'')+' · '+esc(game.opponent||'')+'</span><b>'+
-  game.first_half_scored+'–'+game.first_half_conceded+'</b></div>').join('')).join('');
+ .map(([name,side,venue,games])=>'<h4 class="team-name-'+side+'">'+esc(name)+' · '+venue+'</h4>'+games.map(game=>{
+  const home=side==='home';
+  const opponent=game.opponent||'Rakip adı bilinmiyor';
+  const homeGoals=home?game.first_half_scored:game.first_half_conceded;
+  const awayGoals=home?game.first_half_conceded:game.first_half_scored;
+  return '<div class="half-detail-row"><span>'+esc(game.date||'')+'</span><span>'+
+   '<strong class="team-name-home">'+esc(home?name:opponent)+'</strong> <b>'+homeGoals+'–'+awayGoals+'</b> '+
+   '<strong class="team-name-away">'+esc(home?opponent:name)+'</strong></span></div>';
+ }).join('')).join('');
 const halfMini=(counts.home||counts.away)?'<div class="panel half-mini-panel"><h3>⏱ İlk Yarı Gol Analizi</h3>'+
  goalTableHeader+
  halfRows+'</table>'+(halfMatchDetails?'<details class="half-detail"><summary>Maçları gör</summary>'+halfMatchDetails+'</details>':'')+'</div>':'';
