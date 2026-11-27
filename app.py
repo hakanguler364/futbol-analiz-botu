@@ -396,11 +396,12 @@ def matches(date, league_filter=None, *, max_age=300):
         return list({m["id"]: m for m in found}.values())
     items = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
-        for future in concurrent.futures.as_completed([pool.submit(get_league, league) for league in leagues]):
+        requests = {pool.submit(get_league, league): league for league in leagues}
+        for future in concurrent.futures.as_completed(requests):
             try:
                 items.extend(future.result())
-            except Exception:
-                pass
+            except Exception as exc:
+                print(f"FIXTURE_LEAGUE_ERROR {requests[future]} {date} {exc}", flush=True)
     # Independent global daily fixture feed; merge with ESPN without replacing it.
     def sportsdb():
         url = "https://www.thesportsdb.com/api/v1/json/123/eventsday.php?" + urllib.parse.urlencode({"d": date, "s": "Soccer"})
@@ -1059,11 +1060,11 @@ def analyze(match):
                             combined = {}
                             for source in (value or {}, alternative):
                                 for game in source.get("games") or []:
-                                    key = (game.get("date"), game.get("home_goals"), game.get("away_goals"))
-                                    if key[0] and key[1] is not None and key[2] is not None:
-                                        combined.setdefault(key, game)
+                                    game_key = (game.get("date"), game.get("home_goals"), game.get("away_goals"))
+                                    if all(part is not None for part in game_key) and game_key[0]:
+                                        combined.setdefault(game_key, game)
                             if combined:
-                                merged = sorted(combined.values(), key=lambda g: g["date"], reverse=True)
+                                merged = sorted(combined.values(), key=lambda g: g["date"], reverse=True)[:10]
                                 venue = [g for g in merged if g.get("at_home")][:5]
                                 def summary(rows):
                                     return {

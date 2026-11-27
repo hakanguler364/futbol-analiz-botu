@@ -322,6 +322,7 @@ if(enabled===null){
   privateDefense+privateForm+privateRivalry+'</details></div>';
 }
 const panels={system:systemPanel,teams:teamPanel,goals:goalsPanel,averages:avgPanel,h2h:h2hPanel,venue:venueHPanel,halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult,privateAwayForm,privateTrial)};
+const hasAnalysisData=[scores.ms1, scores.over15, scores.half05, scores.half15].some(Number.isFinite);
 const all=enabled===null;
 if(!all){
  for(const key of Object.keys(scores)){
@@ -337,6 +338,7 @@ return {
  scores,
  insufficient:Object.keys(scores).filter(key=>scores[key]===null),
  limitedMatchData,
+ hasAnalysisData,
  ...(all?{counts}:{})
 };
 }

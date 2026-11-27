@@ -224,7 +224,7 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 </section>
 
 <div class="cards">
-<div class="card">Toplam maç<div class="num" id="total">—</div></div>
+<div class="card">Analize uygun maç<div class="num" id="total">—</div></div>
 <div class="card">Analiz edilen<div class="num" id="analyzed">0</div></div>
 <div class="card">Tamamlanan<div class="num" id="success">0</div></div>
 <div class="card">Hatalı / eksik<div class="num" id="failed">0</div></div>
@@ -300,7 +300,7 @@ location.replace('/');
 }
 
 function update(){
-el('total').textContent=games.length;
+el('total').textContent=ok;
 el('analyzed').textContent=done;
 el('success').textContent=ok;
 el('failed').textContent=bad;
@@ -313,8 +313,10 @@ async function loadTeamInfo(m){
  const node=document.getElementById('team-info-'+m.id);
  if(!node)return;
  try{
-  let d=teamInfoCache[m.id];
-  if(!d){d=await api('/api/team-info/'+encodeURIComponent(m.id));teamInfoCache[m.id]=d;}
+  const d=await (teamInfoCache[m.id]??=api('/api/team-info/'+encodeURIComponent(m.id)).catch(error=>{
+   delete teamInfoCache[m.id];
+   throw error;
+  }));
   if(!node.isConnected)return;
   const rank=v=>Number.isInteger(v)&&v>0?v+'. sıra':'Veri bulunamadı';
   node.innerHTML='<span>🏠 '+esc(m.homeTeam?.name)+': <b>'+rank(d.home_rank)+'</b> · Kadro değeri: <b>Veri bulunamadı</b></span><span>✈️ '+esc(m.awayTeam?.name)+': <b>'+rank(d.away_rank)+'</b> · Kadro değeri: <b>Veri bulunamadı</b></span>';
@@ -322,7 +324,7 @@ async function loadTeamInfo(m){
 }
 const predictionLabels={over15:'90 dk 1,5 Üst',homeHalf:'Ev ilk yarı gol atar',awayHalf:'Deplasman ilk yarı gol atar',half05:'İlk yarı 0,5 Üst',half15:'İlk yarı 1,5 Üst',ms1:'MS 1',ms0:'MS 0',ms2:'MS 2'};
 
-function matchTimeAllowed(m){const from=el('timeFrom').value,to=el('timeTo').value;if(!from&&!to)return true;const time=kickoffTR(m.utcDate);if(time==='Saat bilinmiyor')return false;const mins=v=>{const x=v.split(':').map(Number);return x[0]*60+x[1]};const t=mins(time),f=from?mins(from):0,e=to?mins(to):1439;return from&&to&&f>e?(t>=f||t<=e):t>=f&&t<=e;}
+function matchTimeAllowed(m){const from=el('timeFrom').value,to=el('timeTo').value;if(!from&&!to)return true;const time=kickoffTR(m.utcDate);if(!/^\d{2}:\d{2}$/.test(time))return false;const mins=v=>{const x=v.split(':').map(Number);return x[0]*60+x[1]};const t=mins(time),f=from?mins(from):0,e=to?mins(to):1439;return from&&to&&f>e?(t>=f||t<=e):t>=f&&t<=e;}
 function selectedLeagues(){return Array.from(el('leagueFilter').selectedOptions).map(o=>o.value).filter(Boolean);}
 function syncLeagueCheckboxes(){document.querySelectorAll('#leagueCheckboxes input').forEach(c=>{c.checked=Array.from(el('leagueFilter').selectedOptions).some(o=>o.value===c.value);});}
 function renderLeagueCheckboxes(){const box=el('leagueCheckboxes');if(!box)return;box.replaceChildren();for(const option of el('leagueFilter').options){if(!option.value)continue;const label=document.createElement('label');label.style.cssText='display:flex;gap:9px;align-items:center;padding:7px;border-bottom:1px solid #2b4057';const input=document.createElement('input');input.type='checkbox';input.value=option.value;input.checked=option.selected;input.onchange=()=>{option.selected=input.checked;el('leagueSummary').textContent=selectedLeagues().length+' lig seçildi. Seçilen maçları getir düğmesine basın.';};label.append(input,document.createTextNode(option.textContent));box.append(label);}}
@@ -350,7 +352,11 @@ function kickoffOrder(match) {
 function compareKickoff(a,b) {
  return (kickoffOrder(a)-kickoffOrder(b)) || String(a.id).localeCompare(String(b.id));
 }
-function predictionMatches(){const type=el('predictionType').value,min=Number(el('predictionMin').value);return selectedMatches().filter(m=>(type==='all'||(!results[m.id]&&!predictionScores[m.id])||(!results[m.id]?.limitedMatchData&&Number.isFinite(predictionScores[m.id]?.[type])&&predictionScores[m.id][type]>=min))).sort(compareKickoff);}
+function predictionMatches(){
+ const type=el('predictionType').value,min=Number(el('predictionMin').value);
+ return selectedMatches().filter(m=>results[m.id]?.hasAnalysisData&&
+  (type==='all'||(!results[m.id].limitedMatchData&&Number.isFinite(predictionScores[m.id]?.[type])&&predictionScores[m.id][type]>=min))).sort(compareKickoff);
+}
 function dataWarning(id){
  const d=dataCounts[id];if(!d)return '';
  const low=Math.min(d.home,d.away,d.homeHalf,d.awayHalf);
@@ -380,7 +386,8 @@ function bettingOddsPanel(m){
  return '<section class="odds-panel"><div class="odds-title">📊 Bahis Oranları ve Dağılımı</div><div class="odds-grid">'+tiles+'</div>'+section+'<div class="odds-note">Oran kaynağı: '+source+shareSource+' · Son güncelleme: '+updated+'<br>Yüzdeler yalnızca doğrulanmış bahis tercih verisi varsa gösterilir. Oranlar model tahmin puanlarına dahil edilmez.</div></section>';
 }
 function renderGames(){
-const filtered=predictionMatches();const type=el('predictionType').value;el('predictionSummary').textContent=type==='all'?'Tüm maçlar gösteriliyor.':filtered.filter(m=>!results[m.id]?.limitedMatchData&&Number.isFinite(predictionScores[m.id]?.[type])&&predictionScores[m.id][type]>=Number(el('predictionMin').value)).length+' uygun maç · '+Object.keys(predictionScores).length+'/'+games.length+' maç hesaplandı; hesaplanmayan maçlar geçici olarak gösteriliyor';
+const filtered=predictionMatches();
+el('predictionSummary').textContent=filtered.length+' uygun maç';
 el('matches').innerHTML=filtered.map(m=>`
 <div class="match">
 <div class="match-head"><b>🕒 ${esc(kickoffTR(m.utcDate))}</b><span class="muted">⚽ Maç Analizi</span></div><div class="team-versus"><div class="match-team match-team-home">${badge(m.homeTeam)}<strong>${esc(m.homeTeam?.name)}</strong></div><span class="versus-label">VS</span><div class="match-team match-team-away">${badge(m.awayTeam)}<strong>${esc(m.awayTeam?.name)}</strong></div></div>
@@ -388,10 +395,9 @@ el('matches').innerHTML=filtered.map(m=>`
 ${canViewPanel('teams')?'<div id="team-info-'+esc(m.id)+'" class="team-info-box"><span>📊 Lig sıralaması yükleniyor...</span><span>💶 Kadro değeri: Veri bulunamadı</span></div>':''}
 
 <div id="data-warning-${esc(m.id)}">${dataWarning(m.id)}</div><div id="prediction-${esc(m.id)}">${predictionChips(predictionScores[m.id],results[m.id]?.view?.insufficient||results[m.id]?.insufficient)}</div>
-<div id="state-${esc(m.id)}" class="muted">${renderedAnalyses[m.id] || (results[m.id]?.error ? "Analiz alınamadı: "+esc(results[m.id].error) : "⏳ Otomatik analiz hazırlanıyor...")}</div>
+<div class="muted">${canViewPanel('odds')?'<div id="odds-'+esc(m.id)+'">'+bettingOddsPanel(m)+'</div>':''}${renderedAnalyses[m.id]}</div>
 </div>
-`).join('')||(games.length===0?'<p>Seçilen tarihte veri kaynağından maç alınamadı.</p>':'<p>Seçilen filtre ve minimum puan için uygun maç bulunamadı. Analizler henüz tamamlanmadıysa sonuçlar geldikçe liste güncellenir. Tüm maçları görmek için filtre türünü “Tüm maçlar” yapın.</p>');
-update();
+`).join('')||(games.length?'<p>Analiz verisi doğrulanmış ve filtreye uyan maç henüz bulunamadı.</p>':'<p>Seçilen tarihte veri kaynağından maç alınamadı.</p>');
 if(canViewPanel('teams'))filtered.forEach(m=>loadTeamInfo(m));
 }
 el('recommendationResults').hidden = !canViewPanel('system') || el('accountNav').hidden;
@@ -517,7 +523,7 @@ async function load(){
  const picker=el('leagueFilter'),old=selectedLeagues();
  el('mode').textContent='Lig seçimi hazır';
  el('matches').textContent='Önce ligi seçin, sonra Seçilen maçları getir düğmesine basın.';
- runId++;games=[];done=ok=bad=0;results={};renderedAnalyses={};predictionScores={};update();
+ runId++;games=[];done=ok=bad=0;results={};renderedAnalyses={};predictionScores={};dataCounts={};update();
  try{
   const available=Array.from(picker.options).map(o=>o.value).filter(Boolean);
   for(const option of picker.options)option.selected=old.includes(option.value);
@@ -526,67 +532,40 @@ async function load(){
  }catch(e){el('leagueSummary').textContent='Ligler hazır; maçları getirmek için seçim yapın.';}
 }
 
-async function analyze(id){
-const analysisRun=runId;
-try{
-const r=await api('/api/analyze/'+id);
-if(analysisRun!==runId)return;
-refreshFutureRecommendations();
-if(!results[id]){
-done++;
-if(r.status==='complete')ok++;
-else bad++;
-}
-results[id]=r;
-recordLeagueHealth(games.find(m=>String(m.id)===String(id)),r);
-const state=el('state-'+id);
-if(state){
-const view=r.view||analysisView(r,null,null,games.find(m=>String(m.id)===String(id)));
-if(view.counts){dataCounts[id]=view.counts;const warning=el('data-warning-'+id);if(warning)warning.innerHTML=dataWarning(id);}
-predictionScores[id]=view.scores;
-r.limitedMatchData=view.limitedMatchData;
-if(view.insufficient)r.insufficient=view.insufficient;
-const showOdds=canViewPanel('odds');
-state.innerHTML=(showOdds?bettingOddsPanel(games.find(m=>String(m.id)===String(id))):'')+
-  (view.html?'<div class="analysis-grid">'+view.html+'</div>':'Bu hesap için açık analiz paneli yok.');
-renderedAnalyses[id]=state.innerHTML;
- // Odds are fetched separately so missing/slow odds never block match analysis.
- if(showOdds) api('/api/odds/'+id).then(oddsData=>{
-   const match=games.find(m=>String(m.id)===String(id));
-   if(!match)return;
-   match.betting_data=oddsData;
-   const current=el('state-'+id);
-   if(!current)return;
-   const panel=current.querySelector('.odds-panel');
-   if(panel)panel.outerHTML=bettingOddsPanel(match);
-   renderedAnalyses[id]=current.innerHTML;
- }).catch(()=>{
-   const match=games.find(m=>String(m.id)===String(id));
-   if(!match)return;
-   match.betting_data={source:'BSD: bağlantı hatası',odds:{}};
-   const current=el('state-'+id);
-   if(!current)return;
-   const panel=current.querySelector('.odds-panel');
-   if(panel)panel.outerHTML=bettingOddsPanel(match);
-   renderedAnalyses[id]=current.innerHTML;
- });const chip=el('prediction-'+id);if(chip){chip.innerHTML=predictionChips(predictionScores[id],r.insufficient);}if(el('predictionType').value!=='all')renderGames();
-
-
-}
-if(r.view){el('details').textContent='';return;}
-const fmt=(label,s)=>!s?label+': Veri alınamadı':label+' — Son '+s.count+' maç\nToplam '+s.scored+' gol attı, '+s.conceded+' gol yedi\nİlk yarı '+s.first_half_scored+' attı, '+s.first_half_conceded+' yedi ('+s.first_half_count+' maç)\n'+s.games.map(g=>g.date+' | '+(g.venue==='home'?'Ev':'Deplasman')+' | '+g.opponent+' | '+g.scored+' attı, '+g.conceded+' yedi | İlk yarı '+(g.first_half_scored??'?')+'-'+(g.first_half_conceded??'?')).join('\n');
-const h=r.sections?.head_to_head_last10;
-const h2h=!h?'İkili rekabet: Veri alınamadı':('İkili rekabet — bulunan '+h.count+' maç\n'+r.home+' galibiyet: '+h.home_wins+' | Beraberlik: '+h.draws+' | '+r.away+' galibiyet: '+h.away_wins+'\n'+h.games.map(g=>g.date+' | '+r.home+' '+g.home_goals+'-'+g.away_goals+' '+r.away).join('\n'));
-el('details').textContent=h2h+'\n\n'+fmt(r.home,r.sections?.home_last5)+'\n\n'+fmt(r.away,r.sections?.away_last5)+'\n\nDiğer analiz alanları henüz tamamlanmadı.';
-}catch(e){
-if(!results[id]){done++;bad++;}
-if(analysisRun!==runId)return;
-results[id]={error:e.message};
-recordLeagueHealth(games.find(m=>String(m.id)===String(id)),null);
-const failedNode=el('state-'+id);if(failedNode)failedNode.textContent=' ✕ '+e.message;
-el('details').textContent=e.message;
-}
-update();
+async function analyze(match, date, current){
+ const id=match.id;
+ const controller=new AbortController();
+ const timeout=setTimeout(()=>controller.abort(),90000);
+ try{
+  const response=await api('/api/analyze/'+encodeURIComponent(id)+'?date='+encodeURIComponent(date),{signal:controller.signal});
+  if(current!==runId)return;
+  const view=response.view||analysisView(response,null,null,match);
+  results[id]=view;
+  if(!view.hasAnalysisData)return;
+  dataCounts[id]=view.counts;
+  predictionScores[id]=view.scores;
+  renderedAnalyses[id]=view.html?'<div class="analysis-grid">'+view.html+'</div>':'Bu hesap için açık analiz paneli yok.';
+  renderGames();
+  refreshFutureRecommendations();
+  if(canViewPanel('odds')){
+   api('/api/odds/'+encodeURIComponent(id)).catch(()=>({source:'BSD: bağlantı hatası',odds:{}})).then(odds=>{
+    if(current!==runId)return;
+    match.betting_data=odds;
+    const panel=el('odds-'+id);
+    if(panel)panel.innerHTML=bettingOddsPanel(match);
+   });
+  }
+ }catch(error){
+  if(current===runId)results[id]={error:error.message};
+ }finally{
+  clearTimeout(timeout);
+  if(current===runId){
+   done++;
+   if(results[id]?.hasAnalysisData)ok++;else bad++;
+   recordLeagueHealth(match,results[id]);
+   update();
+  }
+ }
 }
 
 let pendingMatchLoad;
@@ -603,7 +582,7 @@ finally{if(pendingMatchLoad===request)pendingMatchLoad=undefined;}
 }
 
 async function fetchSelectedMatches(leagues,date){
-const current=++runId;done=ok=bad=0;results={};renderedAnalyses={};predictionScores={};games=[];update();
+const current=++runId;done=ok=bad=0;results={};renderedAnalyses={};predictionScores={};dataCounts={};games=[];update();
 el('total').textContent='—';
 el('progress').textContent='Maçlar yükleniyor…';
 el('matches').textContent='Seçilen liglerin maçları yükleniyor...';
@@ -622,9 +601,7 @@ function pumpAnalyses(){
   const match=queue.shift();
   if(results[match.id])continue;
   active++;
-  const node=el('state-'+match.id);
-  if(node)node.textContent='⏳ Analiz yapılıyor...';
-  analyze(match.id).finally(()=>{
+  analyze(match,date,current).finally(()=>{
    active--;
    pumpAnalyses();
   });
@@ -633,11 +610,13 @@ function pumpAnalyses(){
   el('progress').textContent=done+'/'+queued.size+' maç işlendi'+(loading?' · Maç listesi yükleniyor':'');
  }else{
   el('progress').textContent=done+'/'+queued.size+' maç işlendi';
+  if(queued.size && !ok)el('matches').textContent='Analiz için yeterli verisi olan maç bulunamadı.';
  }
 }
 let responses;
 try{
- responses=await Promise.allSettled((leagues.length?leagues:[null]).map(async league=>{
+ const requested=leagues.length===el('leagueFilter').options.length?[null]:leagues;
+ responses=await Promise.allSettled((requested.length?requested:[null]).map(async league=>{
   const data=await api('/api/matches?date='+encodeURIComponent(date)+(league?'&league='+encodeURIComponent(league):''),{signal:controller.signal});
   if(current!==runId || !data.matches?.length)return;
   for(const match of data.matches)byId.set(match.id,match);
@@ -668,21 +647,8 @@ if(failed.length)el('mode').textContent+=' · '+failed.length+' lig yüklenemedi
 }catch(e){if(current===runId){el('progress').textContent='Maç listesi yüklenemedi.';el('matches').textContent=e.name==='AbortError'?'Maç verisi 45 saniyede alınamadı. Sunucu veya veri sağlayıcısı yanıt vermiyor; yeniden deneyin.':'Veri bulunamadı: '+e.message;}}
 }
 
-async function analyzeAll(){
-const current=++runId;
-const visible=selectedMatches();
-const queue=visible.filter(m=>!results[m.id]);
-el('progress').textContent='⏳ Seçilen maçlar analiz ediliyor: '+(visible.length-queue.length)+'/'+visible.length;
-async function worker(){
- while(queue.length&&current===runId){
-  const m=queue.shift();
-  const node=el('state-'+m.id);
-  if(node)node.textContent='⏳ Analiz yapılıyor...';
-  await analyze(m.id);
- }
-}
-await Promise.all(Array.from({length:3},worker));
-if(current===runId)el('progress').textContent='Seçilen maçların analizi tamamlandı: '+visible.length+' maç';
+function analyzeAll(){
+ return showSelectedMatches();
 }
 
 // Lig seçiminde yalnızca görünen adlar Türkçeleştirilir; API kodları değişmez.
@@ -739,8 +705,7 @@ function paintLeagueHealth(){
 function recordLeagueHealth(match,result){
  const code=match?.espn_league;
  if(!code)return;
- const a=result?.sections?.home_last5,b=result?.sections?.away_last5;
- const usable=result?.view ? Boolean(result.view.html) : Boolean((a?.games||[]).length&&(b?.games||[]).length);
+ const usable=result?.hasAnalysisData;
  if(usable)leagueHealth[code]='ok';
  else if(leagueHealth[code]!=='ok')leagueHealth[code]='missing';
  paintLeagueHealth();
@@ -771,8 +736,7 @@ async function autoCheckLeagueHealth(){
     let result;
     try{result=await api('/api/analyze/'+encodeURIComponent(match.id),{signal:controller.signal});}
     finally{clearTimeout(timer);}
-    const a=result.sections?.home_last5,b=result.sections?.away_last5;
-    const usable=result?.view ? Boolean(result.view.html) : Boolean((a?.games||[]).length&&(b?.games||[]).length);
+    const usable=(result.view||analysisView(result,null)).hasAnalysisData;
     leagueHealth[code]=usable?'ok':'missing';
     if(usable)green++;else red++;
    }catch(e){/* Unverified stays gray. */}
