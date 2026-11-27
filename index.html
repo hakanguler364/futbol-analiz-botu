@@ -352,25 +352,49 @@ el('progress').textContent=`${done}/${games.length} maç işlendi`;
 }
 
 function badge(team){const u=team?.crest||team?.logo||'';return /^https:\/\//i.test(u)?'<img class="team-badge" src="'+esc(u)+'" alt="'+esc(team?.name||'Takım')+' arması" loading="lazy" onerror="this.style.display=\'none\'">':'';}
-const teamInfoCache={};
-async function loadTeamInfo(m){
- const node=document.getElementById('team-info-'+m.id);
+const teamInfoCache=new Map();
+const teamInfoInFlight=new Set();
+let teamInfoQueue=[];
+let teamInfoRun;
+function renderTeamInfo(match, data){
+ const node=el('team-info-'+match.id);
  if(!node)return;
- try{
-  const d=await (teamInfoCache[m.id]??=api('/api/team-info/'+encodeURIComponent(m.id)).catch(error=>{
-   delete teamInfoCache[m.id];
-   throw error;
-  }));
-  if(!node.isConnected)return;
-  for(const rankLabel of node.closest('.match').querySelectorAll('[data-league-rank]')){
-   const rank=d[rankLabel.dataset.leagueRank+'_rank'];
-   rankLabel.textContent=Number.isInteger(rank)&&rank>0?rank+'. ':'';
-  }
-  node.innerHTML=[[m.homeTeam?.name,d.home_rank],[m.awayTeam?.name,d.away_rank]]
-   .filter(([,rank])=>Number.isInteger(rank)&&rank>0)
-   .map(([name,rank])=>'<span>'+esc(name)+': <b>'+rank+'. sıra</b></span>').join('');
-  node.hidden=!node.innerHTML;
- }catch(e){if(node.isConnected)node.hidden=true;}
+ if(!data){node.hidden=true;return;}
+ for(const rankLabel of node.closest('.match').querySelectorAll('[data-league-rank]')){
+  const rank=data[rankLabel.dataset.leagueRank+'_rank'];
+  rankLabel.textContent=Number.isInteger(rank)&&rank>0?rank+'. ':'';
+ }
+ node.innerHTML=[[match.homeTeam?.name,data.home_rank],[match.awayTeam?.name,data.away_rank]]
+  .filter(([,rank])=>Number.isInteger(rank)&&rank>0)
+  .map(([name,rank])=>'<span>'+esc(name)+': <b>'+rank+'. sıra</b></span>').join('');
+ node.hidden=!node.innerHTML;
+}
+function updateTeamInfo(matches){
+ teamInfoRun=runId;
+ teamInfoQueue=[];
+ for(const match of matches){
+  const cached=teamInfoCache.get(match.id);
+  if(cached && (cached.data || cached.run===runId))renderTeamInfo(match,cached.data);
+  else if(!teamInfoInFlight.has(match.id))teamInfoQueue.push(match);
+ }
+ pumpTeamInfo();
+}
+function pumpTeamInfo(){
+ while(teamInfoRun===runId && teamInfoInFlight.size<2 && teamInfoQueue.length){
+  const match=teamInfoQueue.shift(), requestRun=runId;
+  teamInfoInFlight.add(match.id);
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),30000);
+  api('/api/team-info/'+encodeURIComponent(match.id),{signal:controller.signal})
+   .catch(()=>null).then(data=>{
+    teamInfoCache.set(match.id,{data,run:requestRun});
+    if(teamInfoRun===runId)renderTeamInfo(match,data);
+   }).finally(()=>{
+    clearTimeout(timeout);
+    teamInfoInFlight.delete(match.id);
+    pumpTeamInfo();
+   });
+ }
 }
 const predictionLabels={over15:'90 dk 1,5 Üst',homeHalf:'Ev ilk yarı gol atar',awayHalf:'Deplasman ilk yarı gol atar',half05:'İlk yarı 0,5 Üst',half15:'İlk yarı 1,5 Üst',ms1:'MS 1',ms0:'MS 0',ms2:'MS 2'};
 
@@ -469,7 +493,7 @@ ${canViewPanel('teams')?'<div id="team-info-'+esc(m.id)+'" class="team-info-box"
 <div class="match-notice"><span>sadece yeşil sonuçları değerlendirin</span></div>
 </div>
 `).join('')||(games.length?'<p>Analiz verisi doğrulanmış ve filtreye uyan maç henüz bulunamadı.</p>':'<p>Seçilen tarihte veri kaynağından maç alınamadı.</p>');
-if(canViewPanel('teams'))filtered.forEach(m=>loadTeamInfo(m));
+if(canViewPanel('teams'))updateTeamInfo(filtered);
 }
 el('recommendationResults').hidden = !canViewPanel('system') || el('accountNav').hidden;
 el('msReport').hidden = el('adminLink').hidden;
