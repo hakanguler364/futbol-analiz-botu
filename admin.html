@@ -22,7 +22,7 @@
 <p id="panelMessage" role="status"></p>
 </section>
 <script>
-const panels=[['system','Sistem Önerisi'],['teams','Takım analizi'],['goals','Gol analizi'],['averages','Ortalamalar'],['h2h','İkili rekabet'],['venue','İç saha / deplasman'],['halftime','İlk yarı'],['comparison','Karşılaştırma'],['result','Maç sonucu'],['odds','Bahis oranları ve dağılımı']];
+const panels=[['system','Sistem Önerisi'],['systemPrediction','Sistem tahmini'],['teams','Takım analizi'],['goals','Gol analizi'],['averages','Ortalamalar'],['h2h','İkili rekabet'],['venue','İç saha / deplasman'],['halftime','İlk yarı'],['comparison','Karşılaştırma'],['result','Maç sonucu'],['odds','Bahis oranları ve dağılımı']];
 async function loadPanels(){
  const response=await fetch('/auth/panels');if(!response.ok)throw Error('Ayarlar alınamadı');
  const data=await response.json();const box=document.querySelector('#panelChoices');box.replaceChildren();

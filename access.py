@@ -9,7 +9,8 @@ from pathlib import Path
 
 import membership
 
-PANEL_IDS = ("system", "teams", "goals", "averages", "h2h", "venue", "halftime", "comparison", "result", "odds")
+PANEL_IDS = ("system", "systemPrediction", "teams", "goals", "averages", "h2h", "venue", "halftime", "comparison", "result", "odds")
+PANEL_SETTINGS_KEY = "enabled_v2"
 PANEL_LOCK = threading.Lock()
 COOKIE = "futbol_session"
 PAGES = Path(__file__).resolve().parent
@@ -98,8 +99,8 @@ class AccessHandler:
                     enabled = payload.get("enabled")
                     if not isinstance(enabled, list) or any(not isinstance(x, str) or x not in PANEL_IDS for x in enabled): raise ValueError("Geçersiz panel seçimi")
                     db.execute("CREATE TABLE IF NOT EXISTS panel_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
-                    db.execute("DELETE FROM panel_settings WHERE name=?", ("enabled",))
-                    db.execute("INSERT INTO panel_settings(name,value) VALUES (?,?)", ("enabled", json.dumps(list(dict.fromkeys(enabled)))))
+                    db.execute("DELETE FROM panel_settings WHERE name=?", (PANEL_SETTINGS_KEY,))
+                    db.execute("INSERT INTO panel_settings(name,value) VALUES (?,?)", (PANEL_SETTINGS_KEY, json.dumps(list(dict.fromkeys(enabled)))))
                     db.commit()
                     self.send({"ok": True})
                 except (ValueError, TypeError, AttributeError):
@@ -133,8 +134,14 @@ class AccessHandler:
 
     def panel_settings(self, db):
         db.execute("CREATE TABLE IF NOT EXISTS panel_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
-        row = db.execute("SELECT value FROM panel_settings WHERE name=?", ("enabled",)).fetchone()
-        return json.loads(row["value"]) if row else ["system"]
+        row = db.execute("SELECT value FROM panel_settings WHERE name=?", (PANEL_SETTINGS_KEY,)).fetchone()
+        if row:
+            return json.loads(row["value"])
+        legacy_row = db.execute("SELECT value FROM panel_settings WHERE name=?", ("enabled",)).fetchone()
+        enabled = json.loads(legacy_row["value"]) if legacy_row else ["system"]
+        if "system" in enabled and "systemPrediction" not in enabled:
+            enabled.append("systemPrediction")
+        return enabled
 
     def membership_action(self, path):
         try:

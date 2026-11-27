@@ -113,11 +113,9 @@ const halfMatchDetails=halfTeams.filter(([, , ,games])=>games.length)
    '<strong class="team-name-home">'+esc(home?name:opponent)+'</strong> <b>'+homeGoals+'–'+awayGoals+'</b> '+
    '<strong class="team-name-away">'+esc(home?opponent:name)+'</strong></span></div>';
  }).join('')).join('');
-const overIndicatorPanel=(label,average,threshold,detail='')=>{
- if(average===null) return '';
- const colors=average>threshold?'background:#75e8a6;color:#101826':'background:#000;color:#fff';
- return '<div class="metric" style="'+colors+
-  ';border-radius:5px;padding:5px 8px;margin:3px 0"><b>'+label+'</b>'+
+const overIndicatorCard=(label,average,threshold,detail='')=>{
+ const status=average===null?'unavailable':average>threshold?'positive':'below';
+ return '<div class="system-prediction-item '+status+'"><b>'+label+'</b>'+
   (detail?'<span>'+detail+'</span>':'')+'</div>';
 };
 const halfIndicator=homeHalf.length&&awayHalf.length?(averageHalf(homeHalf)+averageHalf(awayHalf))/2:null;
@@ -155,8 +153,6 @@ const venueH2hHalf=h2hHalfStats(venueH2hGames,5,4);
 const h2hHalfBonus=generalH2hHalf.bonus+venueH2hHalf.bonus;
 const formatBonus=bonus=>'+'+bonus.toFixed(2).replace('.',',');
 const halfBonusLabel='İkili rekabet katkısı';
-const halfOverPanel=halfIndicator===null?metric(halfBonusLabel,formatBonus(h2hHalfBonus)):
- overIndicatorPanel('İY 0,5 Üst',halfIndicator+h2hHalfBonus,1.5,halfBonusLabel+' '+formatBonus(h2hHalfBonus));
 const h2hHalfRow=(stats,requiredGames)=>{
  const label='İY 0,5 Üst';
  if(!stats.verified) return metric(label,'Devre skoru doğrulanamadı');
@@ -169,7 +165,12 @@ const h2hHalfRow=(stats,requiredGames)=>{
 };
 const fullOverBonus=latestH2h.count===10&&latestH2h.over25>=7?0.5:0;
 const fullOverIndicator=fullLambda===null?null:fullLambda+fullOverBonus;
-const fullOverPanel=overIndicatorPanel('90 dk 2,5 Üst',fullOverIndicator,3.5);
+const halfOverIndicator=halfIndicator===null?null:halfIndicator+h2hHalfBonus;
+const systemPredictionPanel=(halfMini||halfOverIndicator!==null||fullOverIndicator!==null)
+ ?'<section class="panel system-prediction-panel"><h3>Sistem tahmini</h3><div class="system-prediction-items">'+
+  overIndicatorCard('İlk Yarı 0,5 Üst',halfOverIndicator,1.5,(halfOverIndicator===null?'Veri yok · ':'')+halfBonusLabel+' '+formatBonus(h2hHalfBonus))+
+  overIndicatorCard('90 Dakika 2,5 Gol Üst',fullOverIndicator,3.5,fullOverIndicator===null?'Veri yok':'')+
+  '</div></section>':'';
 const drawRate=latestH2h.count?Math.round(100*latestH2h.draws/latestH2h.count):null;
 const drawAlert=latestH2h.count>=5&&drawRate>=50;
 const h2hNotice=latestH2h.count<10
@@ -332,7 +333,7 @@ const systemMsCards=[['MS 1',msResult.ms1],['MS 0',msResult.ms0],['MS 2',msResul
 const missingDataRibbon=showMissingDataRibbon?'<div class="missing-data-ribbon" aria-hidden="true">EKSİK VERİ</div>':'';
 const systemPanel=!(recommendedStatus||extraFullStatus||over25Status||half05Status||championsStatus||systemMsCards)?'':'<div class="panel full system-panel'+(showMissingDataRibbon?' has-missing-data':'')+'" style="border-width:1px;padding:7px"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🎯 Sistem Önerisi</span>' +'</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4>'+recommendedStatus+extraFullStatus+over25Status+half05Status+championsStatus+'<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:5px">'+systemMsCards+'</div></div><small>Yeşil: ilgili tahminin verisi yeterli, model puanı 80 veya üzeri ve risk kontrolü uygun. Eksik Veri uyarısı maçın diğer analizlerini de kapsar. Model puanı başarı garantisi değildir.</small>'+goalConflictWarning+missingDataRibbon+'</div>';
 
-const panels={system:systemPanel,goals:valid(a)||valid(b)?goalsPanel:'',averages:counts.home||counts.away?avgPanel:'',h2h:h2hPanel,venue:venueH?.count?venueHPanel:"",halftime:halfMini+halfOverPanel+fullOverPanel,comparison:comparePanel,result:matchResultPanel(msResult)};
+const panels={system:systemPanel,systemPrediction:systemPredictionPanel,goals:valid(a)||valid(b)?goalsPanel:'',averages:counts.home||counts.away?avgPanel:'',h2h:h2hPanel,venue:venueH?.count?venueHPanel:"",halftime:halfMini+(halfOverIndicator===null?metric(halfBonusLabel,formatBonus(h2hHalfBonus)): ''),comparison:comparePanel,result:matchResultPanel(msResult)};
 const hasAnalysisData=[scores.ms1, scores.over15, scores.half05, scores.half15].some(Number.isFinite);
 const all=enabled===null;
 if(!all){
