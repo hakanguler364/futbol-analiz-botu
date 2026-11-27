@@ -199,6 +199,18 @@ const goalConflict=goalDataReady&&msLeader&&((msLeader[0]==='MS 1'&&homeGoalEdge
 const goalConflictWarning=goalConflict?'<div class="inner" style="border:2px solid #ef4444;background:rgba(220,38,38,.12);padding:12px;border-radius:8px;margin-top:12px"><h4 style="color:#ff6b6b">⚠️ SİSTEM ÖNERİSİNDE GOL VERİSİ TUTARSIZLIĞI</h4><p>Önerilen '+msLeader[0]+' sonucu, takımların gol atma ve gol yeme ortalamalarıyla çelişiyor. Bu nedenle maç sonucu önerisi riskli olabilir; yalnızca MS puanına dayanarak karar vermeyin.</p><p><small>Ev sahibi: maç başına '+homeAttackAvg.toFixed(2)+' gol atıyor, '+homeDefenseAvg.toFixed(2)+' gol yiyor. Deplasman: maç başına '+awayAttackAvg.toFixed(2)+' gol atıyor, '+awayDefenseAvg.toFixed(2)+' gol yiyor.</small></p><small>Gol verilerinin işaret ettiği taraf: '+(homeGoalEdge>0?'Ev sahibi': 'Deplasman')+'. Bu karşılaştırma kesin maç sonucu değildir.</small></div>':'';
 
 const over25Score=poissonOver(fullLambda,2);
+const requiredScores=[msResult.ms1,msResult.ms0,msResult.ms2,over25Score,scores.half05];
+if(championsRule)requiredScores.push(scores.over15,scores.homeHalf);
+if(limitedMatchData||requiredScores.some(score=>!Number.isFinite(score))){
+ return {
+  html:'',
+  scores:{},
+  insufficient:[],
+  limitedMatchData:true,
+  hasAnalysisData:false,
+  ...(enabled===null?{counts}:{})
+ };
+}
 const optionRow=(market,label,score,extraRisk=false,counts=null)=>{
  const points=Number.isFinite(score)?Math.round(score):null;
  const playable=points!==null&&points>80&&!extraRisk&&!limitedMatchData;
@@ -224,19 +236,13 @@ const championsStatus=championsRule
   championsOption(null,'Ev ilk yarı gol atar','homeHalf',championsHomeHalfRisk)
  :'';
 const systemTeams=esc(r.home)+' - '+esc(r.away);
-const requiredScores=[msResult.ms1,msResult.ms0,msResult.ms2,over25Score,scores.half05];
-if(championsRule)requiredScores.push(scores.over15,scores.homeHalf);
-const insufficientSystemData=requiredScores.some(score=>!Number.isFinite(score));
-const systemDataWarning=insufficientSystemData
- ?'<span style="flex-shrink:0;color:#ffcf56;font-size:.75rem;font-weight:700">Yetersiz veri</span>'
- :'';
 const systemMsCards=[['MS 1',msResult.ms1],['MS 0',msResult.ms0],['MS 2',msResult.ms2]].map(([label,score])=>{
  const available=Number.isFinite(score);
  const risky=msLeader?.[0]===label&&Boolean(msClose||goalConflict);
  const background=available&&score>=80&&!risky&&!limitedMsData&&!limitedMatchData?'#75e8a6':'#ff858e';
  return '<div style="padding:4px;text-align:center;border-radius:5px;background:'+background+';color:#101826"><div>'+label+'</div><strong>'+(available?score:'—')+'</strong>'+(limitedMsData||limitedMatchData?'<small style="display:block;color:inherit">Sınırlı veri</small>':risky?'<small style="display:block;color:inherit">Riskli</small>':'')+'</div>';
 }).join('');
-const systemPanel='<div class="panel full system-panel" style="border-width:1px;padding:7px"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🎯 Sistem Önerisi</span>'+systemDataWarning+'</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4>'+recommendedStatus+over25Status+half05Status+championsStatus+'<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:5px">'+systemMsCards+'</div></div><small>Yeşil: model puanı 80’in üzerinde ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+'</div>';
+const systemPanel='<div class="panel full system-panel" style="border-width:1px;padding:7px"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🎯 Sistem Önerisi</span></h3><div class="inner"><h4>⚽ '+systemTeams+'</h4>'+recommendedStatus+over25Status+half05Status+championsStatus+'<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:5px">'+systemMsCards+'</div></div><small>Yeşil: model puanı 80’in üzerinde ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+'</div>';
 
 const trialVotes=[0,0,0];
 let privateDefense='';
