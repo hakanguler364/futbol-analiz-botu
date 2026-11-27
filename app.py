@@ -1254,8 +1254,11 @@ def archive_recommendations(db_path, match, output):
     with closing(membership.connect(db_path)) as db, db:
         db.execute(
             """INSERT INTO recommendation_archive
-               (match_day, fixture_id, home, away, captured_at, selections)
-               VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (match_day, fixture_id) DO NOTHING""",
+               (match_day, fixture_id, home, away, captured_at, selections, data_verified)
+               VALUES (?, ?, ?, ?, ?, ?, 1) ON CONFLICT (match_day, fixture_id) DO UPDATE SET
+                   home=excluded.home, away=excluded.away, captured_at=excluded.captured_at,
+                   selections=excluded.selections, data_verified=excluded.data_verified
+               WHERE recommendation_archive.data_verified=0""",
             (day, str(match["id"]), output["home"], output["away"], int(captured_at), selections),
         )
 
@@ -1335,21 +1338,15 @@ def refresh_recommendation_scores(day, archived):
     return scores_by_id, kickoff_by_id, len(updated if require_full_refresh else items)
 
 
-# Confirmed limited-data fixtures archived before the eligibility check.
-INELIGIBLE_ARCHIVED_FIXTURES = {("2026-11-27", "alkholood", "alkhaleej")}
-
-
 def recommendation_report(db_path, day):
     with closing(membership.connect(db_path)) as db:
-        archived = db.execute(
-            """SELECT fixture_id, home, away, selections FROM recommendation_archive
+        records = db.execute(
+            """SELECT fixture_id, home, away, selections, data_verified FROM recommendation_archive
                WHERE match_day=? ORDER BY captured_at, fixture_id""", (day,)
         ).fetchall()
-    archived = [
-        item for item in archived
-        if (day, team_match_key(item["home"]), team_match_key(item["away"]))
-        not in INELIGIBLE_ARCHIVED_FIXTURES
-    ]
+    # Older records do not contain evidence of the pre-kickoff data quality check.
+    archived = [item for item in records if item["data_verified"] == 1]
+    unverified_matches = len(records) - len(archived)
     scores_by_id, kickoff_by_id = {}, {}
     if archived and day <= (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3)).date().isoformat():
         with RESULT_REFRESH_LOCKS.setdefault(day, Lock()):
@@ -1375,7 +1372,8 @@ def recommendation_report(db_path, day):
     misses = sum(row["hit"] is False for row in rows)
     return {"rows": rows, "hits": hits, "misses": misses, "pending": len(rows) - hits - misses,
             "accuracy": round(100 * hits / (hits + misses), 1) if hits + misses else None,
-            "total_matches": total_matches, "predicted_matches": predicted_matches}
+            "total_matches": total_matches, "predicted_matches": predicted_matches,
+            "unverified_matches": unverified_matches}
 
 
 def analysis_context():

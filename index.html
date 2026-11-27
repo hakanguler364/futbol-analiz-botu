@@ -449,6 +449,12 @@ async function loadRecommendationResults(manual = false){
   coverage.className = 'muted';
   coverage.textContent = date+' · Programdaki maç: '+(report.total_matches || '—')+' · Tahmin verilen maç: '+report.predicted_matches;
   summary.replaceChildren(title, coverage);
+  if(report.unverified_matches){
+   const unverified = document.createElement('div');
+   unverified.className = 'muted';
+   unverified.textContent = 'Maç öncesi veri yeterliliği doğrulanamayan '+report.unverified_matches+' arşiv kaydı rapor dışında.';
+   summary.append(unverified);
+  }
   if(total){
    const {hits, misses, pending} = report;
    const format = new Intl.NumberFormat('tr-TR', {maximumFractionDigits:1});

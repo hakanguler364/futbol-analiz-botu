@@ -115,6 +115,7 @@ def initialize(db):
         away TEXT NOT NULL,
         captured_at INTEGER NOT NULL,
         selections TEXT NOT NULL,
+        data_verified INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (match_day, fixture_id)
     );
     """
@@ -134,6 +135,11 @@ def initialize(db):
         db.execute("ALTER TABLE members ADD COLUMN IF NOT EXISTS display_name TEXT")
     elif not any(row["name"] == "display_name" for row in db.execute("PRAGMA table_info(members)")):
         db.execute("ALTER TABLE members ADD COLUMN display_name TEXT")
+
+    if isinstance(db, PostgresConnection):
+        db.execute("ALTER TABLE recommendation_archive ADD COLUMN IF NOT EXISTS data_verified INTEGER NOT NULL DEFAULT 0")
+    elif not any(row["name"] == "data_verified" for row in db.execute("PRAGMA table_info(recommendation_archive)")):
+        db.execute("ALTER TABLE recommendation_archive ADD COLUMN data_verified INTEGER NOT NULL DEFAULT 0")
 
 
 def normalize_name(name):
