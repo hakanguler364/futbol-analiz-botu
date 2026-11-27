@@ -118,7 +118,6 @@ const overIndicatorPanel=(label,average,threshold)=>average===null?'':
  ';color:#101826"><h3 style="color:inherit">'+label+'</h3></div>';
 const halfIndicator=homeHalf.length&&awayHalf.length?(averageHalf(homeHalf)+averageHalf(awayHalf))/2:null;
 const halfOverPanel=overIndicatorPanel('İY 0,5 Üst',halfIndicator,1.5);
-const fullOverPanel=overIndicatorPanel('90 dk 2,5 Üst',fullLambda,3.5);
 const halfMini=(counts.home||counts.away)?'<div class="panel half-mini-panel"><h3>⏱ İlk Yarı Gol Analizi</h3>'+
  goalTableHeader+
  halfRows+'</table>'+(halfMatchDetails?'<details class="half-detail"><summary>Maçları gör</summary>'+halfMatchDetails+'</details>':'')+'</div>':'';
@@ -138,6 +137,7 @@ const latestH2h={
  over25:countH2h(game=>game.home_goals+game.away_goals>=3),
  kg_var:countH2h(game=>game.home_goals>0&&game.away_goals>0)
 };
+const fullOverPanel=overIndicatorPanel('90 dk 2,5 Üst',latestH2h.count?latestH2h.over25:null,6);
 const drawRate=latestH2h.count?Math.round(100*latestH2h.draws/latestH2h.count):null;
 const drawAlert=latestH2h.count>=5&&drawRate>=50;
 const h2hNotice=latestH2h.count<10
