@@ -108,6 +108,7 @@ def initialize(db):
     CREATE TABLE IF NOT EXISTS pending_members (
         member_id INTEGER PRIMARY KEY REFERENCES members(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS used_admin_recovery_codes (code_hash TEXT PRIMARY KEY);
     CREATE TABLE IF NOT EXISTS recommendation_archive (
         match_day TEXT NOT NULL,
         fixture_id TEXT NOT NULL,
@@ -190,6 +191,26 @@ def reset_password(db, member_id, password):
     new_hash = password_hash(password)
     db.execute("UPDATE members SET password_hash=? WHERE id=?", (new_hash, member_id))
     db.execute("DELETE FROM sessions WHERE member_id=?", (member_id,))
+
+
+def recover_admin_password(db, phone, code, password, *, admin_phone, recovery_code):
+    error = "Telefon numarası veya kurtarma kodu geçersiz."
+    if len(recovery_code) < 32 or not isinstance(code, str) or not hmac.compare_digest(
+        code.encode("utf-8"), recovery_code.encode("utf-8")
+    ):
+        raise ValueError(error)
+    if not admin_phone or normalize_phone(phone) != normalize_phone(admin_phone):
+        raise ValueError(error)
+    member = db.execute("SELECT id FROM members WHERE phone=? AND is_admin=1 AND blocked=0",
+                        (normalize_phone(admin_phone),)).fetchone()
+    if member is None:
+        raise ValueError(error)
+    code_hash = hashlib.sha256(recovery_code.encode("utf-8")).hexdigest()
+    used = db.execute("INSERT INTO used_admin_recovery_codes VALUES (?) ON CONFLICT DO NOTHING",
+                      (code_hash,))
+    if used.rowcount != 1:
+        raise ValueError(error)
+    reset_password(db, member["id"], password)
 
 
 def login(db, phone, password, display_name=None):
