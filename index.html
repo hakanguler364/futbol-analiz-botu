@@ -447,12 +447,12 @@ async function loadRecommendationResults(manual = false){
   title.textContent = 'Toplam tahmin sayısı: '+total;
   const coverage = document.createElement('div');
   coverage.className = 'muted';
-  coverage.textContent = date+' · Programdaki maç: '+(report.total_matches || '—')+' · Tahmin verilen maç: '+report.predicted_matches;
+  coverage.textContent = date+' · Programdaki maç: '+(report.total_matches || '—')+' · Doğrulanmış tahmini olan maç: '+report.predicted_matches;
   summary.replaceChildren(title, coverage);
   if(report.unverified_matches){
    const unverified = document.createElement('div');
    unverified.className = 'muted';
-   unverified.textContent = 'Maç öncesi veri yeterliliği doğrulanamayan '+report.unverified_matches+' arşiv kaydı rapor dışında.';
+   unverified.textContent = report.unverified_matches+' eski maç kaydı doğrulama bekliyor veya maç öncesi doğrulanamadığı için rapor dışında.';
    summary.append(unverified);
   }
   if(total){
@@ -520,11 +520,11 @@ document.addEventListener('visibilitychange', () => {
  if(document.hidden) clearTimeout(recommendationTimer);
  else if(el('matchDate').value >= localDate() || recentRecommendationDay(el('matchDate').value)) loadRecommendationResults();
 });
-function refreshFutureRecommendations(){
- if(el('recommendationResults').hidden || el('matchDate').value <= localDate() || recommendationAfterAnalysisTimer) return;
+function refreshRecommendationsAfterAnalysis(){
+ if(el('recommendationResults').hidden || el('matchDate').value < localDate() || recommendationAfterAnalysisTimer) return;
  recommendationAfterAnalysisTimer = setTimeout(() => {
   recommendationAfterAnalysisTimer = undefined;
-  if(recommendationController) refreshFutureRecommendations();
+  if(recommendationController) refreshRecommendationsAfterAnalysis();
   else loadRecommendationResults();
  }, 5000);
 }
@@ -567,7 +567,7 @@ async function analyze(match, date, current){
   predictionScores[id]=view.scores;
   renderedAnalyses[id]=view.html?'<div class="analysis-grid">'+view.html+'</div>':'Bu hesap için açık analiz paneli yok.';
   renderGames();
-  refreshFutureRecommendations();
+  refreshRecommendationsAfterAnalysis();
   if(canViewPanel('odds')){
    api('/api/odds/'+encodeURIComponent(id)).catch(()=>({source:'BSD: bağlantı hatası',odds:{}})).then(odds=>{
     if(current!==runId)return;
@@ -616,8 +616,13 @@ const queued=new Set();
 const queue=[];
 let active=0;
 let loading=true;
+let analysisFinished=false;
 function pumpAnalyses(){
  if(current!==runId)return;
+ // Verify matches before their recording deadline. Already-started fixtures can wait.
+ const now=Date.now();
+ const upcoming=match=>{const kickoff=kickoffOrder(match);return Number.isFinite(kickoff)&&kickoff>now;};
+ queue.sort((a,b)=>Number(upcoming(b))-Number(upcoming(a))||compareKickoff(a,b));
  while(active<3 && queue.length){
   const match=queue.shift();
   if(results[match.id])continue;
@@ -632,6 +637,10 @@ function pumpAnalyses(){
  }else{
   el('progress').textContent=done+'/'+queued.size+' maç işlendi';
   if(queued.size && !ok)el('matches').textContent='Analiz için yeterli verisi olan maç bulunamadı.';
+  if(queued.size && !analysisFinished){
+   analysisFinished=true;
+   refreshRecommendationsAfterAnalysis();
+  }
  }
 }
 let responses;
