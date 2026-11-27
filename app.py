@@ -956,6 +956,7 @@ def espn_head_to_head(match):
             except (OSError, ValueError, TypeError):
                 continue
     games = []
+    event_ids = {}
     for event in events:
         try:
             when = datetime.datetime.fromisoformat(event.get("date", "").replace("Z", "+00:00"))
@@ -980,11 +981,25 @@ def espn_head_to_head(match):
             if home.get("homeAway") == away.get("homeAway"):
                 continue
             hg, ag = score(home), score(away)
-            games.append({"date": when.date().isoformat(), "at_home": at_home, "home_goals": hg,
-                          "away_goals": ag, "winner": "home" if hg > ag else "away" if ag > hg else "draw"})
+            game = {"date": when.date().isoformat(), "at_home": at_home, "home_goals": hg,
+                    "away_goals": ag, "winner": "home" if hg > ag else "away" if ag > hg else "draw"}
+            games.append(game)
+            half = espn_result({**event, "status": status}, home, away).get("half")
+            if half is not None:
+                game["half_goals"] = half
+            elif event.get("id"):
+                event_ids[id(game)] = event["id"]
         except (ValueError, TypeError, KeyError, StopIteration, IndexError):
             continue
     games.sort(key=lambda g: g["date"], reverse=True)
+    from concurrent.futures import ThreadPoolExecutor
+    pending = [game for game in games[:10] if id(game) in event_ids]
+    if pending:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            halves = pool.map(lambda game: espn_halftime_scores(league, event_ids[id(game)], home_id), pending)
+            for game, half in zip(pending, halves):
+                if half is not None and 0 <= half[0] <= game["home_goals"] and 0 <= half[1] <= game["away_goals"]:
+                    game["half_goals"] = half
     venue_games = [g for g in games if g["at_home"]][:5]
     return {"venue_last5": {"count": len(venue_games), "home_wins": sum(g["winner"] == "home" for g in venue_games), "away_wins": sum(g["winner"] == "away" for g in venue_games), "draws": sum(g["winner"] == "draw" for g in venue_games), "under25": sum(g["home_goals"] + g["away_goals"] <= 2 for g in venue_games), "over25": sum(g["home_goals"] + g["away_goals"] > 2 for g in venue_games), "kg_var": sum(g["home_goals"] > 0 and g["away_goals"] > 0 for g in venue_games), "kg_yok": sum(g["home_goals"] == 0 or g["away_goals"] == 0 for g in venue_games)}, "count": len(games), "home_wins": sum(g["winner"] == "home" for g in games),
             "away_wins": sum(g["winner"] == "away" for g in games),

@@ -117,7 +117,6 @@ const overIndicatorPanel=(label,average,threshold)=>average===null?'':
  '<div class="panel" style="background:'+(average>threshold?'#75e8a6':'#ff858e')+
  ';color:#101826"><h3 style="color:inherit">'+label+'</h3></div>';
 const halfIndicator=homeHalf.length&&awayHalf.length?(averageHalf(homeHalf)+averageHalf(awayHalf))/2:null;
-const halfOverPanel=overIndicatorPanel('İY 0,5 Üst',halfIndicator,1.5);
 const halfMini=(counts.home||counts.away)?'<div class="panel half-mini-panel"><h3>⏱ İlk Yarı Gol Analizi</h3>'+
  goalTableHeader+
  halfRows+'</table>'+(halfMatchDetails?'<details class="half-detail"><summary>Maçları gör</summary>'+halfMatchDetails+'</details>':'')+'</div>':'';
@@ -137,6 +136,14 @@ const latestH2h={
  over25:countH2h(game=>game.home_goals+game.away_goals>=3),
  kg_var:countH2h(game=>game.home_goals>0&&game.away_goals>0)
 };
+const verifiedH2hHalves=recentH2hGames.filter(game=>Array.isArray(game.half_goals)&&
+ game.half_goals.length===2&&game.half_goals.every(goalCountValid)&&
+ game.half_goals[0]<=game.home_goals&&game.half_goals[1]<=game.away_goals);
+const h2hHalfOver=verifiedH2hHalves.filter(game=>game.half_goals[0]+game.half_goals[1]>0).length;
+const h2hHalfBonus=verifiedH2hHalves.length===10&&h2hHalfOver>=7?0.5:0;
+const halfOverPanel=overIndicatorPanel('İY 0,5 Üst',halfIndicator===null?null:halfIndicator+h2hHalfBonus,1.5);
+const h2hHalfRow=metric('İY 0,5 Üst',verifiedH2hHalves.length?h2hHalfOver+'/'+verifiedH2hHalves.length+
+ ' · '+verifiedH2hHalves.length+'/'+recentH2hGames.length+' devre skoru doğrulandı':'Devre skoru doğrulanamadı');
 const fullOverBonus=latestH2h.count===10&&latestH2h.over25>=7?0.5:0;
 const fullOverIndicator=fullLambda===null?null:fullLambda+fullOverBonus;
 const fullOverPanel=overIndicatorPanel('90 dk 2,5 Üst',fullOverIndicator,3.5);
@@ -159,7 +166,7 @@ const rivalryResults=record=>
  metric('<span class="team-name-away">'+esc(r.away)+'</span> galibiyet',record.away_wins);
 const h2hPanel='<div class="panel"><h3>🤝 Kendi Aralarındaki Son 10 Doğrulanmış Maç</h3>'+
  (latestH2h.count?rivalryResults(latestH2h)+rivalryTag(latestH2h)+metric('🤝 Beraberlik oranı','%'+drawRate+' ('+latestH2h.draws+'/'+latestH2h.count+')')+
- h2hCountRow('⚽ 2,5 Üst',latestH2h.over25,latestH2h.count,7,true)+h2hCountRow('🤝 KG Var',latestH2h.kg_var,latestH2h.count,7,true)+
+ h2hCountRow('⚽ 2,5 Üst',latestH2h.over25,latestH2h.count,7,true)+h2hCountRow('🤝 KG Var',latestH2h.kg_var,latestH2h.count,7,true)+h2hHalfRow+
  (drawAlert?'<div class="recommend">⚠️ Beraberlik eğilimi yüksek — dikkat!</div>':'')+
  '<small>'+latestH2h.count+' doğrulanmış geçmiş karşılaşma. Geçmiş oranlar tahmin garantisi değildir.</small>'
  :'<small>Doğrulanmış geçmiş eşleşme bulunamadı.</small>')+h2hNotice+'</div>';
