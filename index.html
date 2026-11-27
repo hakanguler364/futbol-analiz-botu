@@ -679,7 +679,7 @@ el('matches').textContent='Seçilen liglerin maçları yükleniyor...';
 for(const league of leagues)leagueHealth[league]='unknown';paintLeagueHealth();
 try{
 const controller=new AbortController();
-const timeout=setTimeout(()=>controller.abort(),45000);
+const timeout=setTimeout(()=>controller.abort(),150000);
 const byId=new Map();
 const queued=new Set();
 const queue=[];
@@ -743,7 +743,7 @@ if(!games.length){
 loading=false;
 pumpAnalyses();
 if(failed.length)el('mode').textContent+=' · '+failed.length+' lig yüklenemedi';
-}catch(e){if(current===runId){el('progress').textContent='Maç listesi yüklenemedi.';el('matches').textContent=e.name==='AbortError'?'Maç verisi 45 saniyede alınamadı. Sunucu veya veri sağlayıcısı yanıt vermiyor; yeniden deneyin.':'Veri bulunamadı: '+e.message;}}
+}catch(e){if(current===runId){el('progress').textContent='Maç listesi yüklenemedi.';el('matches').textContent=e.name==='AbortError'?'Maç verisi 150 saniyede alınamadı. Sunucu veya veri sağlayıcısı yanıt vermiyor; yeniden deneyin.':'Veri bulunamadı: '+e.message;}}
 }
 
 function analyzeAll(){

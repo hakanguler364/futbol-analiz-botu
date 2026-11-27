@@ -14,6 +14,7 @@ TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TG_CHAT = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 CACHE = {}
 MATCH_CACHE = {}
+MATCH_FETCH_LOCKS = {}
 RESULT_REFRESH_SECONDS = 30
 RESULT_REFRESH_LOCKS = {}
 
@@ -303,9 +304,16 @@ def soccerway_recent(match, side):
 
 
 def matches(date, league_filter=None, *, max_age=300):
-    if league_filter and league_filter not in ESPN_LEAGUES:
-        raise ValueError('Gecersiz lig secimi')
     date = valid_date(date)
+    if league_filter and league_filter not in ESPN_LEAGUES:
+        raise ValueError("Gecersiz lig secimi")
+    key = (date, league_filter)
+    # A cold fixture scan is shared by the list and the result panels.
+    with MATCH_FETCH_LOCKS.setdefault(key, Lock()):
+        return fetch_matches(date, league_filter, max_age=max_age)
+
+
+def fetch_matches(date, league_filter, *, max_age):
     cache_key = date + ':' + (league_filter or 'all')
     cached = MATCH_CACHE.get(cache_key)
     if cached and time.time() - cached["time"] < max_age:
