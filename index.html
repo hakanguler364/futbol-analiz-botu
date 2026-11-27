@@ -398,6 +398,15 @@ function predictionMatches(){
 }
 function dataWarning(id){
  const d=dataCounts[id];if(!d)return '';
+ if(results[id]?.missingData){
+  const fields=[['Ev sahibi iç saha maçları',d.home,8],['Deplasman takımı dış saha maçları',d.away,8],
+   ['Ev sahibi iç saha devre skorları',d.homeHalf,8],['Deplasman takımı dış saha devre skorları',d.awayHalf,8],
+   ['Ev sahibinin sahasındaki ikili maçlar',d.venueH2h,3]];
+  const missing=fields.filter(([,value,minimum])=>Number.isFinite(value)&&value<minimum)
+   .map(([label,value,minimum])=>label+' '+value+'/'+minimum);
+  if(d.missingScores?.length)missing.push('Hesaplanamayan puanlar: '+d.missingScores.join(', '));
+  if(missing.length)return '<div class="data-warning amber"><span>'+esc(missing.join(' · '))+'</span></div>';
+ }
  const low=Math.min(d.home,d.away,d.homeHalf,d.awayHalf);
  const tone=low<5?'red':low<8?'amber':'green';
  const label=low<5?'⚠️ DİKKAT! YETERSİZ MAÇ VERİSİ':low<8?'⚠️ DİKKAT! SINIRLI MAÇ VERİSİ':'✓ Veri sayısı yeterli';
@@ -648,8 +657,12 @@ async function analyze(match, date, current){
   if(current!==runId)return;
   const view=response.view||analysisView(response,null,null,match);
   results[id]=view;
+  if(view.counts){
+   const missingScores=(view.insufficient||[]).filter(key=>['ms1','ms0','ms2','half05'].includes(key))
+    .map(key=>predictionLabels[key]);
+   dataCounts[id]={...view.counts,venueH2h:response.sections?.head_to_head_last10?.venue_last5?.count??0,missingScores};
+  }
   if(!view.hasAnalysisData)return;
-  dataCounts[id]=view.counts;
   predictionScores[id]=view.scores;
   renderedAnalyses[id]=view.html?'<div class="analysis-grid">'+view.html+'</div>':'Bu hesap için açık analiz paneli yok.';
   refreshRecommendationsAfterAnalysis();
