@@ -114,13 +114,10 @@ const halfMatchDetails=halfTeams.filter(([, , ,games])=>games.length)
    '<strong class="team-name-away">'+esc(home?opponent:name)+'</strong></span></div>';
  }).join('')).join('');
 const halfOverPanel=homeHalf.length&&awayHalf.length?(()=>{
- const mean=(games,field)=>games.reduce((sum,game)=>sum+game[field],0)/games.length;
- const indicator=(attack,defense)=>fmtAvg((mean(attack,'first_half_scored')+
-  mean(defense,'first_half_conceded'))/2);
- return '<div class="panel"><h3>⏱ İY 0,5 Üst</h3>'+
-  metric('<span class="team-name-home">'+esc(r.home)+'</span>',indicator(homeHalf,awayHalf))+
-  metric('<span class="team-name-away">'+esc(r.away)+'</span>',indicator(awayHalf,homeHalf))+
-  '<small>Takımın ilk yarı gol atma ortalaması ile rakibinin ilk yarı gol yeme ortalamasının ortalaması.</small></div>';
+ // The sum of the two attack/defense indicators is the mean of the two total-goal averages.
+ const green=(averageHalf(homeHalf)+averageHalf(awayHalf))/2>1.5;
+ return '<div class="panel" style="background:'+(green?'#75e8a6':'#ff858e')+
+  ';color:#101826"><h3 style="color:inherit">İY 0,5 Üst</h3></div>';
 })():'';
 const halfMini=(counts.home||counts.away)?'<div class="panel half-mini-panel"><h3>⏱ İlk Yarı Gol Analizi</h3>'+
  goalTableHeader+
