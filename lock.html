@@ -18,17 +18,6 @@
   <input id="password" type="password" autocomplete="current-password" required maxlength="256">
   <button type="submit" id="submit">Giriş yap</button>
   <button type="button" id="switch-mode">Hesap aç</button>
-  <button type="button" id="show-recovery">Şifremi unuttum</button>
-</form>
-<form id="recovery-form" hidden>
-  <label for="recovery-phone">Yönetici telefon numarası</label>
-  <input id="recovery-phone" type="tel" autocomplete="username" required maxlength="25">
-  <label for="recovery-code">Tek kullanımlık kurtarma kodu</label>
-  <input id="recovery-code" type="password" required minlength="32" maxlength="256" autocomplete="off">
-  <label for="recovery-password">Yeni şifre</label>
-  <input id="recovery-password" type="password" autocomplete="new-password" required minlength="12" maxlength="256">
-  <button type="submit">Şifreyi değiştir</button>
-  <button type="button" id="back-to-login">Girişe dön</button>
 </form>
 <p id="message" role="status"></p>
 </main>
@@ -72,45 +61,6 @@ form.onsubmit = async (event) => {
     message.textContent = error.message;
   } finally {
     submit.disabled = toggle.disabled = false;
-  }
-};
-const recoveryForm = document.querySelector('#recovery-form');
-const recoveryPhone = document.querySelector('#recovery-phone');
-const recoveryCode = document.querySelector('#recovery-code');
-const recoveryPassword = document.querySelector('#recovery-password');
-function showRecovery(show) {
-  form.hidden = show;
-  recoveryForm.hidden = !show;
-  recoveryForm.reset();
-  password.value = '';
-  if (show) recoveryPhone.value = phone.value;
-  message.textContent = show ? 'Yönetici hesabı için Render’da oluşturulan kurtarma kodunu kullan.' : '';
-}
-document.querySelector('#show-recovery').onclick = () => showRecovery(true);
-document.querySelector('#back-to-login').onclick = () => showRecovery(false);
-recoveryForm.onsubmit = async (event) => {
-  event.preventDefault();
-  const buttons = recoveryForm.querySelectorAll('button');
-  buttons.forEach(button => button.disabled = true);
-  message.textContent = '';
-  try {
-    const response = await fetch('/auth/recover', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-Futbol-Request': '1'},
-      body: JSON.stringify({phone: recoveryPhone.value, code: recoveryCode.value,
-                            password: recoveryPassword.value})
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error);
-    phone.value = recoveryPhone.value;
-    showRecovery(false);
-    if (registering) toggle.onclick();
-    message.textContent = result.message;
-  } catch (error) {
-    message.textContent = error.message;
-  } finally {
-    recoveryCode.value = recoveryPassword.value = '';
-    buttons.forEach(button => button.disabled = false);
   }
 };
 </script>

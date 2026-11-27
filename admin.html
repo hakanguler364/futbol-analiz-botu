@@ -82,7 +82,7 @@ passwordForm.onsubmit = async event => {
   savePassword.disabled = true;
   document.querySelector('#cancelPassword').disabled = true;
   try {
-    await request('/auth/access', {
+    const result = await request('/auth/access', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Futbol-Request': '1'},
       body: JSON.stringify({
@@ -92,6 +92,10 @@ passwordForm.onsubmit = async event => {
       })
     });
     passwordDialog.close();
+    if (result.sign_in_required) {
+      location.replace('/');
+      return;
+    }
     message.textContent = 'Şifre değiştirildi ve eski oturumlar kapatıldı.';
   } catch (error) {
     passwordError.textContent = error.message;
@@ -102,7 +106,7 @@ passwordForm.onsubmit = async event => {
 };
 
 async function loadMembers() {
-  const {members} = await request('/auth/members');
+  const {members, current_member_id} = await request('/auth/members');
   list.replaceChildren();
   for (const member of members) {
     const row = document.createElement('li');
@@ -133,16 +137,21 @@ async function loadMembers() {
           button.disabled = false;
         }
       };
+      row.append(button);
+    }
+    const ownAccount = member.id === current_member_id;
+    if (!member.is_admin || ownAccount) {
       const reset = document.createElement('button');
       reset.type = 'button';
-      reset.textContent = 'Şifreyi sıfırla';
+      reset.textContent = ownAccount ? 'Şifremi değiştir' : 'Şifreyi sıfırla';
       reset.onclick = () => {
         passwordMemberId = member.id;
+        passwordDialog.querySelector('h2').textContent = reset.textContent;
         document.querySelector('#passwordMember').textContent = member.phone;
         passwordError.textContent = '';
         passwordDialog.showModal();
       };
-      row.append(button, reset);
+      row.append(reset);
     }
     list.append(row);
   }

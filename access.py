@@ -66,7 +66,7 @@ class AccessHandler:
         if method == "POST" and self.headers.get("X-Futbol-Request") != "1":
             self.send({"error": "Geçersiz istek"}, 403)
             return True
-        if method == "POST" and path in ("/auth/login", "/auth/register", "/auth/logout", "/auth/access", "/auth/recover"):
+        if method == "POST" and path in ("/auth/login", "/auth/register", "/auth/logout", "/auth/access"):
             self.membership_action(path)
             return True
         with closing(membership.connect(self.membership_path)) as db:
@@ -116,7 +116,7 @@ class AccessHandler:
                 return True
             if method == "GET" and path == "/auth/members":
                 if member["is_admin"]:
-                    self.send({"members": membership.members(db)})
+                    self.send({"members": membership.members(db), "current_member_id": member["id"]})
                 else:
                     self.send({"error": "Yönetici yetkisi gerekiyor"}, 403)
                 return True
@@ -154,16 +154,6 @@ class AccessHandler:
                     self.change_access(db, data)
                     return
                 membership.limit_attempts(db)
-                if path == "/auth/recover":
-                    membership.recover_admin_password(
-                        db, data.get("phone"), data.get("code"), data.get("password"),
-                        admin_phone=os.environ.get("MEMBERSHIP_ADMIN_PHONE", ""),
-                        recovery_code=os.environ.get("MEMBERSHIP_ADMIN_RECOVERY_CODE", ""),
-                    )
-                    db.commit()
-                    self.send({"message": "Şifre değiştirildi. Yeni şifrenle giriş yapabilirsin."},
-                              cookie=self.session_cookie())
-                    return
                 if path == "/auth/register":
                     membership.create_member(db, data.get("phone"), data.get("password"), pending=True,
                                              display_name=data.get("display_name"))
@@ -188,10 +178,15 @@ class AccessHandler:
         if type(member_id) is not int or not 0 < member_id < 2**63 or action not in ("approve", "open", "block", "reset_password"):
             raise ValueError("Geçersiz işlem")
         target = db.execute("SELECT is_admin,expires_at FROM members WHERE id=?", (member_id,)).fetchone()
-        if not target or target["is_admin"]:
+        changing_own_password = action == "reset_password" and member_id == actor["id"]
+        if not target or (target["is_admin"] and not changing_own_password):
             raise ValueError("Bu hesabın durumu değiştirilemez")
         if action == "reset_password":
             membership.reset_password(db, member_id, data.get("password"))
+            if changing_own_password:
+                db.commit()
+                self.send({"ok": True, "sign_in_required": True}, cookie=self.session_cookie())
+                return
         elif action == "approve":
             membership.approve(db, member_id)
         elif action == "open":
