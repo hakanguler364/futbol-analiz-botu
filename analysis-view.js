@@ -124,9 +124,11 @@ const goalsPanel='<div class="panel"><h3>⚽ Gol İstatistikleri (Genel)</h3>'+g
 const venueSummary=(s,venue)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue).slice(0,5);return g.length?g.filter(x=>x.scored>x.conceded).length+'G '+g.filter(x=>x.scored===x.conceded).length+'B '+g.filter(x=>x.scored<x.conceded).length+'M':'';};
 const venuePerformance=(s,venue)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue&&Number.isFinite(x.scored)&&Number.isFinite(x.conceded)).slice(0,5);if(g.length<5)return '';const wins=g.filter(x=>x.scored>x.conceded).length,losses=g.filter(x=>x.scored<x.conceded).length,draws=g.filter(x=>x.scored===x.conceded).length;if(draws>=3)return '<span class="muted">Performansı dengeli (beraberlik ağırlıklı)</span>';return wins>=3&&wins>losses?'<span class="score-green">Performansı yüksek</span>':losses>=3&&losses>wins?'<span class="score-red">Performansı düşük</span>':'<span class="muted">Performansı dengeli</span>';};
 const avgPanel='<div class="panel"><h3>🏠 Kendi Sahası / Deplasman (Son 5)</h3>'+metric('<span class="team-name-home">'+esc(r.home)+'</span> (Ev)',venueSummary(a,'home')+' · '+venuePerformance(a,'home'))+metric('<span class="team-name-away">'+esc(r.away)+'</span> (Dep)',venueSummary(b,'away')+' · '+venuePerformance(b,'away'))+'</div>';
-const recentH2hGames=(h?.games||[]).filter(game=>
+const orderedH2hGames=(h?.games||[]).filter(game=>
  /^\d{4}-\d{2}-\d{2}$/.test(game.date)&&goalCountValid(game.home_goals)&&goalCountValid(game.away_goals)
-).sort((left,right)=>right.date.localeCompare(left.date)).slice(0,10);
+).sort((left,right)=>right.date.localeCompare(left.date));
+const recentH2hGames=orderedH2hGames.slice(0,10);
+const venueH2hGames=orderedH2hGames.filter(game=>game.at_home===true).slice(0,5);
 const countH2h=predicate=>recentH2hGames.filter(predicate).length;
 const latestH2h={
  count:recentH2hGames.length,
@@ -136,14 +138,23 @@ const latestH2h={
  over25:countH2h(game=>game.home_goals+game.away_goals>=3),
  kg_var:countH2h(game=>game.home_goals>0&&game.away_goals>0)
 };
-const verifiedH2hHalves=recentH2hGames.filter(game=>Array.isArray(game.half_goals)&&
- game.half_goals.length===2&&game.half_goals.every(goalCountValid)&&
- game.half_goals[0]<=game.home_goals&&game.half_goals[1]<=game.away_goals);
-const h2hHalfOver=verifiedH2hHalves.filter(game=>game.half_goals[0]+game.half_goals[1]>0).length;
-const h2hHalfBonus=verifiedH2hHalves.length===10&&h2hHalfOver>=7?0.5:0;
-const halfOverPanel=overIndicatorPanel('İY 0,5 Üst',halfIndicator===null?null:halfIndicator+h2hHalfBonus,1.5);
-const h2hHalfRow=metric('İY 0,5 Üst',verifiedH2hHalves.length?h2hHalfOver+'/'+verifiedH2hHalves.length+
- ' · '+verifiedH2hHalves.length+'/'+recentH2hGames.length+' devre skoru doğrulandı':'Devre skoru doğrulanamadı');
+const h2hHalfStats=(games,requiredGames,threshold)=>{
+ const verified=games.filter(game=>Array.isArray(game.half_goals)&&
+  game.half_goals.length===2&&game.half_goals.every(goalCountValid)&&
+  game.half_goals[0]<=game.home_goals&&game.half_goals[1]<=game.away_goals);
+ const over=verified.filter(game=>game.half_goals[0]+game.half_goals[1]>0).length;
+ const bonus=verified.length===requiredGames&&over>=threshold?0.25:0;
+ return {over,verified:verified.length,bonus};
+};
+const generalH2hHalf=h2hHalfStats(recentH2hGames,10,7);
+const venueH2hHalf=h2hHalfStats(venueH2hGames,5,4);
+const h2hHalfBonus=generalH2hHalf.bonus+venueH2hHalf.bonus;
+const formatBonus=bonus=>'+'+bonus.toFixed(2).replace('.',',');
+const halfOverPanel=overIndicatorPanel('İY 0,5 Üst',halfIndicator===null?null:halfIndicator+h2hHalfBonus,1.5)+
+ metric('İkili rekabet katkısı',formatBonus(h2hHalfBonus));
+const h2hHalfRow=(stats,requiredGames)=>metric('İY 0,5 Üst',stats.verified?
+ stats.over+'/'+stats.verified+' · '+stats.verified+'/'+requiredGames+' devre skoru doğrulandı · '+formatBonus(stats.bonus):
+ 'Devre skoru doğrulanamadı');
 const fullOverBonus=latestH2h.count===10&&latestH2h.over25>=7?0.5:0;
 const fullOverIndicator=fullLambda===null?null:fullLambda+fullOverBonus;
 const fullOverPanel=overIndicatorPanel('90 dk 2,5 Üst',fullOverIndicator,3.5);
@@ -166,7 +177,7 @@ const rivalryResults=record=>
  metric('<span class="team-name-away">'+esc(r.away)+'</span> galibiyet',record.away_wins);
 const h2hPanel='<div class="panel"><h3>🤝 Kendi Aralarındaki Son 10 Doğrulanmış Maç</h3>'+
  (latestH2h.count?rivalryResults(latestH2h)+rivalryTag(latestH2h)+metric('🤝 Beraberlik oranı','%'+drawRate+' ('+latestH2h.draws+'/'+latestH2h.count+')')+
- h2hCountRow('⚽ 2,5 Üst',latestH2h.over25,latestH2h.count,7,true)+h2hCountRow('🤝 KG Var',latestH2h.kg_var,latestH2h.count,7,true)+h2hHalfRow+
+ h2hCountRow('⚽ 2,5 Üst',latestH2h.over25,latestH2h.count,7,true)+h2hCountRow('🤝 KG Var',latestH2h.kg_var,latestH2h.count,7,true)+h2hHalfRow(generalH2hHalf,10)+
  (drawAlert?'<div class="recommend">⚠️ Beraberlik eğilimi yüksek — dikkat!</div>':'')+
  '<small>'+latestH2h.count+' doğrulanmış geçmiş karşılaşma. Geçmiş oranlar tahmin garantisi değildir.</small>'
  :'<small>Doğrulanmış geçmiş eşleşme bulunamadı.</small>')+h2hNotice+'</div>';
@@ -174,7 +185,7 @@ const venueH=h?.venue_last5;
 const venueHPanel='<div class="panel"><h3>🏟 Kendi Aralarında Ev Sahibinin Sahasında (Son 5)</h3>'+(venueH?.count<5?'<div class="data-warning '+(venueH?.count<3?'red':'amber')+'">⚠️ SINIRLI İÇ SAHA REKABET VERİSİ <span>Bulunan: '+(venueH?.count||0)+' / 5 maç</span></div>':'')+(venueH?.count?
 rivalryResults(venueH)+rivalryTag(venueH)+rivalryRecent(h?.games,true)+
 h2hCountRow('⚽ 2,5 Üst',venueH.over25,venueH.count,4,true)+
-h2hCountRow('🤝 KG Var',venueH.kg_var,venueH.count,4,true)+
+h2hCountRow('🤝 KG Var',venueH.kg_var,venueH.count,4,true)+h2hHalfRow(venueH2hHalf,5)+
 '<small>'+venueH.count+'/5 doğrulanmış karşılaşma. Üst ve KG Var oranları yalnızca bu sahadaki ikili maçlara dayanır; tahmin garantisi değildir.</small>':
 '<small>Bu sahada doğrulanmış karşılaşma bulunamadı.</small>')+'</div>';
 const homeAttack=avg(a,'scored'),awayConcede=avg(b,'conceded'),awayAttack=avg(b,'scored'),homeConcede=avg(a,'conceded');

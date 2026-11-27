@@ -993,14 +993,15 @@ def espn_head_to_head(match):
             continue
     games.sort(key=lambda g: g["date"], reverse=True)
     from concurrent.futures import ThreadPoolExecutor
-    pending = [game for game in games[:10] if id(game) in event_ids]
+    venue_games = [g for g in games if g["at_home"]][:5]
+    selected_games = {id(game): game for game in games[:10] + venue_games}
+    pending = [game for game_id, game in selected_games.items() if game_id in event_ids]
     if pending:
         with ThreadPoolExecutor(max_workers=4) as pool:
             halves = pool.map(lambda game: espn_halftime_scores(league, event_ids[id(game)], home_id), pending)
             for game, half in zip(pending, halves):
                 if half is not None and 0 <= half[0] <= game["home_goals"] and 0 <= half[1] <= game["away_goals"]:
                     game["half_goals"] = half
-    venue_games = [g for g in games if g["at_home"]][:5]
     return {"venue_last5": {"count": len(venue_games), "home_wins": sum(g["winner"] == "home" for g in venue_games), "away_wins": sum(g["winner"] == "away" for g in venue_games), "draws": sum(g["winner"] == "draw" for g in venue_games), "under25": sum(g["home_goals"] + g["away_goals"] <= 2 for g in venue_games), "over25": sum(g["home_goals"] + g["away_goals"] > 2 for g in venue_games), "kg_var": sum(g["home_goals"] > 0 and g["away_goals"] > 0 for g in venue_games), "kg_yok": sum(g["home_goals"] == 0 or g["away_goals"] == 0 for g in venue_games)}, "count": len(games), "home_wins": sum(g["winner"] == "home" for g in games),
             "away_wins": sum(g["winner"] == "away" for g in games),
             "draws": sum(g["winner"] == "draw" for g in games), "games": games, "kg_var": sum(g["home_goals"] > 0 and g["away_goals"] > 0 for g in games), "kg_yok": sum(g["home_goals"] == 0 or g["away_goals"] == 0 for g in games), "over25": sum(g["home_goals"] + g["away_goals"] > 2 for g in games), "under25": sum(g["home_goals"] + g["away_goals"] <= 2 for g in games)}
@@ -1122,7 +1123,7 @@ def analyze(match):
                                     if all(part is not None for part in game_key) and game_key[0]:
                                         combined.setdefault(game_key, game)
                             if combined:
-                                merged = sorted(combined.values(), key=lambda g: g["date"], reverse=True)[:10]
+                                merged = sorted(combined.values(), key=lambda g: g["date"], reverse=True)
                                 venue = [g for g in merged if g.get("at_home")][:5]
                                 def summary(rows):
                                     return {
