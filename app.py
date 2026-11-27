@@ -3,7 +3,7 @@
 import os, json, urllib.request, urllib.parse, urllib.error, http.server, datetime, pathlib, re, time
 
 from contextlib import closing
-from threading import Lock
+from threading import Lock, Thread
 
 import membership
 from access import ANALYSIS_VIEW, AccessHandler, configure
@@ -1240,6 +1240,136 @@ def recommendation_result(market, scores):
     return home + away >= targets[market]
 
 
+MS_MARKETS = ("MS 1", "MS 0", "MS 2")
+MS_BACKTEST_LOCK = Lock()
+MS_BACKTEST_ERROR = None
+MS_HISTORY_START = datetime.date(2026, 11, 18)
+
+
+def evaluate_ms_analysis(output):
+    raw = analysis_context().eval("""(data) => {
+        const view = analysisView(JSON.parse(data), ['system']);
+        if (view.missingData) return 'null';
+        const {ms1, ms0, ms2} = view.scores;
+        return JSON.stringify([ms1, ms0, ms2]);
+    }""")(json.dumps(output))
+    scores = json.loads(raw)
+    if scores is not None and all(type(score) is int and 0 <= score <= 100 for score in scores):
+        return scores
+    return None
+
+
+def archive_ms_scores(db_path, match, output):
+    kickoff = datetime.datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
+    if kickoff.tzinfo is None or kickoff.timestamp() <= time.time():
+        return
+    scores = evaluate_ms_analysis(output)
+    if scores is None:
+        return
+    day = (kickoff.astimezone(datetime.timezone.utc) + datetime.timedelta(hours=3)).date()
+    with closing(membership.connect(db_path)) as db, db:
+        if kickoff.timestamp() > time.time():
+            db.execute(
+                """INSERT INTO ms_score_archive (match_day, fixture_id, home, away, ms1, ms0, ms2)
+                   VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (match_day, fixture_id) DO NOTHING""",
+                (day.isoformat(), str(match["id"]), output["home"], output["away"], *scores),
+            )
+
+
+def ms_outcome(points, full_score):
+    if points is None or full_score is None:
+        return None
+    best = max(points)
+    if points.count(best) != 1:
+        return None
+    return recommendation_result(MS_MARKETS[points.index(best)], {"full": full_score})
+
+
+def ms_summary(outcomes, finished):
+    hits = sum(outcome is True for outcome in outcomes)
+    misses = sum(outcome is False for outcome in outcomes)
+    evaluated = hits + misses
+    return {"evaluated": evaluated, "hits": hits, "misses": misses,
+            "excluded": finished - evaluated,
+            "accuracy": round(100 * hits / evaluated, 1) if evaluated else None}
+
+
+def ms_archive_report(db_path, day):
+    with closing(membership.connect(db_path)) as db:
+        records = db.execute(
+            "SELECT fixture_id, home, away, ms1, ms0, ms2 FROM ms_score_archive WHERE match_day=?",
+            (day,),
+        ).fetchall()
+    if not records:
+        return ms_summary([], 0)
+    fixtures, _ = matches(day, max_age=RESULT_REFRESH_SECONDS)
+    by_id = {str(id_): match for match in fixtures
+             for id_ in (match["id"], *match.get("fixture_aliases", []))}
+    recorded = {}
+    for row in records:
+        match = by_id.get(row["fixture_id"])
+        if match:
+            canonical = str(match["id"])
+            if canonical not in recorded or canonical == row["fixture_id"]:
+                recorded[canonical] = row
+    outcomes = []
+    for match in fixtures:
+        full = final_scores(match).get("full")
+        if full is None:
+            continue
+        row = recorded.get(str(match["id"]))
+        points = [row[key] for key in ("ms1", "ms0", "ms2")] if row else None
+        outcomes.append(ms_outcome(points, full))
+    return ms_summary(outcomes, len(outcomes))
+
+
+def ms_backtest_days(db_path):
+    with closing(membership.connect(db_path)) as db:
+        return {row["match_day"]: json.loads(row["summary"]) for row in
+                db.execute("SELECT match_day, summary FROM ms_backtest_days ORDER BY match_day").fetchall()}
+
+
+def run_ms_backtest(db_path, first_day, last_day):
+    global MS_BACKTEST_ERROR
+    MS_BACKTEST_ERROR = None
+    try:
+        completed_days = ms_backtest_days(db_path)
+        for offset in range((last_day - first_day).days + 1):
+            day_string = (first_day + datetime.timedelta(days=offset)).isoformat()
+            if day_string in completed_days:
+                continue
+            fixtures, demo = matches(day_string)
+            if demo:
+                raise ValueError("Arşiv maçları alınamadı")
+            outcomes = []
+            for match in fixtures:
+                full = final_scores(match).get("full")
+                if full is None:
+                    continue
+                output = analyze(match)
+                cutoff = match["utcDate"][:10]
+                # Some providers return only the fixture day. Exclude an analysis if any
+                # input might include a same-day result that was unavailable at kickoff.
+                history = [game for section in output["sections"].values() if section
+                           for key in ("games", "venue_games") for game in section.get(key, [])]
+                points = (evaluate_ms_analysis(output)
+                          if all(game.get("date") and game["date"][:10] < cutoff for game in history)
+                          else None)
+                outcomes.append(ms_outcome(points, full))
+            summary = json.dumps(ms_summary(outcomes, len(outcomes)))
+            with closing(membership.connect(db_path)) as db, db:
+                db.execute(
+                    """INSERT INTO ms_backtest_days (match_day, summary) VALUES (?, ?)
+                       ON CONFLICT (match_day) DO UPDATE SET summary=excluded.summary""",
+                    (day_string, summary),
+                )
+    except Exception:
+        MS_BACKTEST_ERROR = "Geçmiş maçların hesaplanması kesildi. Yeniden deneyebilirsin."
+        print("MS_BACKTEST_ERROR", flush=True)
+    finally:
+        MS_BACKTEST_LOCK.release()
+
+
 def archive_recommendations(db_path, match, output):
     kickoff = datetime.datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
     if kickoff.tzinfo is None or kickoff.timestamp() <= time.time():
@@ -1452,6 +1582,15 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
                 self.send({"home_rank": ranks["home"], "away_rank": ranks["away"],
                            "home_value": None, "away_value": None, "source": ranks["source"]})
                 return
+            if path == "/api/ms-report":
+                if not self.membership_path or not self.current_member["is_admin"]:
+                    self.send({"error": "Yönetici yetkisi gerekiyor"}, 403)
+                    return
+                day = valid_date(urllib.parse.parse_qs(parsed.query).get("date", [""])[0])
+                self.send({"archive": ms_archive_report(self.membership_path, day),
+                           "history": ms_backtest_days(self.membership_path),
+                           "running": MS_BACKTEST_LOCK.locked(), "error": MS_BACKTEST_ERROR})
+                return
             if path == "/api/recommendation-results":
                 if not self.membership_path or "system" not in self.current_panels:
                     self.send({"error": "Bu panel hesabınız için açık değil"}, 403)
@@ -1495,6 +1634,11 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
                         archive_recommendations(self.membership_path, match, output)
                     except Exception:
                         print("RECOMMENDATION_ARCHIVE_ERROR", flush=True)
+                    try:
+                        archive_ms_scores(self.membership_path, match, output)
+                    except Exception:
+                        print("MS_SCORE_ARCHIVE_ERROR", flush=True)
+
                 if self.membership_path and not self.current_member["is_admin"]:
                     self.send(subscriber_analysis(output, self.current_panels))
                 else:
@@ -1510,6 +1654,23 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
         if self.membership_gate(urllib.parse.urlparse(self.path).path, "POST"):
             return
         try:
+            if self.path == "/api/ms-backtest":
+                if not self.membership_path or not self.current_member["is_admin"]:
+                    self.send({"error": "Yönetici yetkisi gerekiyor"}, 403)
+                    return
+                if not MS_BACKTEST_LOCK.acquire(blocking=False):
+                    self.send({"error": "Geçmiş maçlar zaten hesaplanıyor"}, 409)
+                    return
+                yesterday = (datetime.datetime.now(datetime.timezone.utc) +
+                             datetime.timedelta(hours=3)).date() - datetime.timedelta(days=1)
+                try:
+                    Thread(target=run_ms_backtest, daemon=True,
+                           args=(self.membership_path, MS_HISTORY_START, yesterday)).start()
+                except Exception:
+                    MS_BACKTEST_LOCK.release()
+                    raise
+                self.send({"started": True}, 202)
+                return
             if self.path != "/api/telegram":
                 self.send({"error": "Bulunamadi"}, 404)
                 return

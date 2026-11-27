@@ -231,6 +231,21 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 <button onclick="showSelectedMatches()">Günlük maçları getir</button>
 </div>
 
+<section class="card" id="msReport" hidden>
+<h3>MS1 / MS0 / MS2 · Tuttu / Yattı</h3>
+<div id="msArchiveSummary" role="status"></div>
+<button type="button" onclick="loadMsReport()">Sonuçları yenile</button>
+<button type="button" id="msBacktestButton" onclick="startMsBacktest()">Geçmiş maçları hesapla</button>
+<p id="msBacktestStatus" role="status"></p>
+<div id="msHistory" style="overflow-x:auto" hidden>
+<table>
+<caption>Geçmiş maçlar · güncel modelle yeniden hesaplama</caption>
+<thead><tr><th scope="col">Tarih</th><th scope="col">Değerlendirilen</th><th scope="col">Tuttu</th><th scope="col">Yattı</th><th scope="col">Başarı</th><th scope="col">Hariç</th></tr></thead>
+<tbody id="msHistoryRows"></tbody>
+</table>
+</div>
+</section>
+
 <section class="card" id="recommendationResults" hidden>
 <h3>Sistem Önerisi Sonuçları</h3>
 <button type="button" onclick="loadRecommendationResults(true)">Sonuçları şimdi yenile</button>
@@ -289,6 +304,7 @@ async function today(){
  clearRecommendationResults();
  const date=localDate();
  el('matchDate').value=date;
+ loadMsReport();
  const request=recommendationRequest;
  await showSelectedMatches();
  if(request===recommendationRequest && el('matchDate').value===date)loadRecommendationResults();
@@ -416,6 +432,58 @@ ${canViewPanel('teams')?'<div id="team-info-'+esc(m.id)+'" class="team-info-box"
 if(canViewPanel('teams'))filtered.forEach(m=>loadTeamInfo(m));
 }
 el('recommendationResults').hidden = !canViewPanel('system') || el('accountNav').hidden;
+el('msReport').hidden = el('adminLink').hidden;
+let msReportTimer;
+let msReportRequest = 0;
+const msPercent = value => value === null ? '—' : '%'+value.toLocaleString('tr-TR');
+async function loadMsReport(){
+ const date = el('matchDate').value;
+ if(el('msReport').hidden || !date) return;
+ clearTimeout(msReportTimer);
+ const request = ++msReportRequest;
+ const summary = el('msArchiveSummary');
+ summary.textContent = date+' · Maç öncesi kayıtlar yükleniyor…';
+ try{
+  const report = await api('/api/ms-report?date='+encodeURIComponent(date));
+  if(request !== msReportRequest || date !== el('matchDate').value) return;
+  const a = report.archive;
+  summary.textContent = date+' · Maç öncesi kayıt: '+a.evaluated+' değerlendirildi · '+a.hits+' tuttu · '+a.misses+' yattı · Başarı '+msPercent(a.accuracy);
+  const days = Object.entries(report.history);
+  el('msHistory').hidden = !days.length;
+  const rows = document.createDocumentFragment();
+  for(const [day,result] of days){
+   const row = document.createElement('tr');
+   for(const value of [day,result.evaluated,result.hits,result.misses,msPercent(result.accuracy),result.excluded]){
+    const cell = document.createElement('td');
+    cell.textContent = value;
+    row.append(cell);
+   }
+   rows.append(row);
+  }
+  el('msHistoryRows').replaceChildren(rows);
+  el('msBacktestButton').disabled = report.running;
+  el('msBacktestStatus').textContent = report.running
+   ? 'Geçmiş maçlar hesaplanıyor. Tamamlanan günler tabloya eklenir.'
+   : report.error || (days.length ? 'Eksik verili veya en yüksek puanı eşit maçlar hariç tutulur.' : '');
+  if(report.running) msReportTimer = setTimeout(loadMsReport, 10000);
+ }catch(e){
+  if(request === msReportRequest){
+   summary.textContent = 'MS sonuçları alınamadı.';
+   el('msBacktestButton').disabled = false;
+  }
+ }
+}
+async function startMsBacktest(){
+ const button = el('msBacktestButton');
+ button.disabled = true;
+ try{
+  await api('/api/ms-backtest',{method:'POST',headers:{'X-Futbol-Request':'1'}});
+  loadMsReport();
+ }catch(e){
+  button.disabled = false;
+  el('msBacktestStatus').textContent = e.message;
+ }
+}
 const recommendationPollInterval = 30000;
 let recommendationTimer;
 let recommendationController;
@@ -539,6 +607,7 @@ function clearRecommendationResults(){
  el('recommendationRows').replaceChildren();
 }
 async function load(){
+ loadMsReport();
  clearRecommendationResults();
  loadRecommendationResults();
  const picker=el('leagueFilter'),old=selectedLeagues();

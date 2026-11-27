@@ -119,6 +119,20 @@ def initialize(db):
         data_verified INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (match_day, fixture_id)
     );
+    CREATE TABLE IF NOT EXISTS ms_score_archive (
+        match_day TEXT NOT NULL,
+        fixture_id TEXT NOT NULL,
+        home TEXT NOT NULL,
+        away TEXT NOT NULL,
+        ms1 INTEGER NOT NULL,
+        ms0 INTEGER NOT NULL,
+        ms2 INTEGER NOT NULL,
+        PRIMARY KEY (match_day, fixture_id)
+    );
+    CREATE TABLE IF NOT EXISTS ms_backtest_days (
+        match_day TEXT PRIMARY KEY,
+        summary TEXT NOT NULL
+    );
     """
     if isinstance(db, PostgresConnection):
         db.execute("SELECT pg_advisory_xact_lock(61539001)")
