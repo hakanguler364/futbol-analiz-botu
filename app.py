@@ -1335,12 +1335,21 @@ def refresh_recommendation_scores(day, archived):
     return scores_by_id, kickoff_by_id, len(updated if require_full_refresh else items)
 
 
+# Confirmed limited-data fixtures archived before the eligibility check.
+INELIGIBLE_ARCHIVED_FIXTURES = {("2026-11-27", "alkholood", "alkhaleej")}
+
+
 def recommendation_report(db_path, day):
     with closing(membership.connect(db_path)) as db:
         archived = db.execute(
             """SELECT fixture_id, home, away, selections FROM recommendation_archive
                WHERE match_day=? ORDER BY captured_at, fixture_id""", (day,)
         ).fetchall()
+    archived = [
+        item for item in archived
+        if (day, team_match_key(item["home"]), team_match_key(item["away"]))
+        not in INELIGIBLE_ARCHIVED_FIXTURES
+    ]
     scores_by_id, kickoff_by_id = {}, {}
     if archived and day <= (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3)).date().isoformat():
         with RESULT_REFRESH_LOCKS.setdefault(day, Lock()):

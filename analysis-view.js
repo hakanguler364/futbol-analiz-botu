@@ -199,19 +199,23 @@ const goalConflict=goalDataReady&&msLeader&&((msLeader[0]==='MS 1'&&homeGoalEdge
 const goalConflictWarning=goalConflict?'<div class="inner" style="border:2px solid #ef4444;background:rgba(220,38,38,.12);padding:12px;border-radius:8px;margin-top:12px"><h4 style="color:#ff6b6b">⚠️ SİSTEM ÖNERİSİNDE GOL VERİSİ TUTARSIZLIĞI</h4><p>Önerilen '+msLeader[0]+' sonucu, takımların gol atma ve gol yeme ortalamalarıyla çelişiyor. Bu nedenle maç sonucu önerisi riskli olabilir; yalnızca MS puanına dayanarak karar vermeyin.</p><p><small>Ev sahibi: maç başına '+homeAttackAvg.toFixed(2)+' gol atıyor, '+homeDefenseAvg.toFixed(2)+' gol yiyor. Deplasman: maç başına '+awayAttackAvg.toFixed(2)+' gol atıyor, '+awayDefenseAvg.toFixed(2)+' gol yiyor.</small></p><small>Gol verilerinin işaret ettiği taraf: '+(homeGoalEdge>0?'Ev sahibi': 'Deplasman')+'. Bu karşılaştırma kesin maç sonucu değildir.</small></div>':'';
 
 const over25Score=poissonOver(fullLambda,2);
+const limitedMsData=(h?.venue_last5?.count??0)<3;
+const requiredScores=[msResult.ms1,msResult.ms0,msResult.ms2,over25Score,scores.half05];
+if(championsRule)requiredScores.push(scores.over15,scores.homeHalf);
+const insufficientSystemData=requiredScores.some(score=>!Number.isFinite(score));
+const showMissingDataRibbon=insufficientSystemData||limitedMatchData||limitedMsData;
 const optionRow=(market,label,score,extraRisk=false,counts=null)=>{
  const points=Number.isFinite(score)?Math.round(score):null;
- const playable=points!==null&&points>80&&!extraRisk&&!limitedMatchData;
+ const playable=points!==null&&points>80&&!extraRisk&&!showMissingDataRibbon;
  if(playable&&archive&&market)archive[market]=points;
- const background=playable?'#75e8a6':'#ff858e';
- const status=points===null?'Yetersiz veri':points+' puan'+(playable?'':limitedMatchData?' · Sınırlı veri':' · Riskli');
+ const background=showMissingDataRibbon?'#351d2b':playable?'#75e8a6':'#ff858e';
+ const status=points===null?'Yetersiz veri':points+' puan'+(playable?'':showMissingDataRibbon?' · Sınırlı veri':' · Riskli');
  const sample=points===null&&counts
   ?'<small style="display:block;color:inherit">Doğrulanmış maç: İç saha '+counts[0]+' · Deplasman '+counts[1]+
    (counts.some(count=>count<5)?' · En az 5’er maç gerekli':' · Gol toplamları eksik veya geçersiz')+'</small>'
   :'';
- return '<div style="margin:3px 0;padding:3px 7px;border-radius:5px;background:'+background+';color:#101826"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span>'+label+'</span><b style="text-align:right">'+status+'</b></div>'+sample+'</div>';
+ return '<div style="margin:3px 0;padding:3px 7px;border-radius:5px;background:'+background+';color:'+(showMissingDataRibbon?'#ffd5da':'#101826')+'"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span>'+label+'</span><b style="text-align:right">'+status+'</b></div>'+sample+'</div>';
 };
-const limitedMsData=(h?.venue_last5?.count??0)<3;
 if(msLeader&&!limitedMsData)optionRow(msLeader[0],msLeader[0],msLeader[1],Boolean(msClose||goalConflict));
 const recommendedStatus=safest?optionRow(safest[0],'⚽ '+safest[0],safest[1],Boolean(riskFlag&&safest[0]==='İY 0,5 Üst')):'';
 const over25Status=optionRow('2,5 Üst','⚽ 2,5 Üst',over25Score,false,fullCounts);
@@ -224,19 +228,15 @@ const championsStatus=championsRule
   championsOption(null,'Ev ilk yarı gol atar','homeHalf',championsHomeHalfRisk)
  :'';
 const systemTeams=esc(r.home)+' - '+esc(r.away);
-const requiredScores=[msResult.ms1,msResult.ms0,msResult.ms2,over25Score,scores.half05];
-if(championsRule)requiredScores.push(scores.over15,scores.homeHalf);
-const insufficientSystemData=requiredScores.some(score=>!Number.isFinite(score));
 const systemDataWarning=insufficientSystemData
  ?'<span style="flex-shrink:0;color:#ffcf56;font-size:.75rem;font-weight:700">Yetersiz veri</span>'
  :'';
 const systemMsCards=[['MS 1',msResult.ms1],['MS 0',msResult.ms0],['MS 2',msResult.ms2]].map(([label,score])=>{
  const available=Number.isFinite(score);
  const risky=msLeader?.[0]===label&&Boolean(msClose||goalConflict);
- const background=available&&score>=80&&!risky&&!limitedMsData&&!limitedMatchData?'#75e8a6':'#ff858e';
- return '<div style="padding:4px;text-align:center;border-radius:5px;background:'+background+';color:#101826"><div>'+label+'</div><strong>'+(available?score:'—')+'</strong>'+(limitedMsData||limitedMatchData?'<small style="display:block;color:inherit">Sınırlı veri</small>':risky?'<small style="display:block;color:inherit">Riskli</small>':'')+'</div>';
+ const background=showMissingDataRibbon?'#351d2b':available&&score>80&&!risky?'#75e8a6':'#ff858e';
+ return '<div style="padding:4px;text-align:center;border-radius:5px;background:'+background+';color:'+(showMissingDataRibbon?'#ffd5da':'#101826')+'"><div>'+label+'</div><strong>'+(available?score:'—')+'</strong>'+(showMissingDataRibbon?'<small style="display:block;color:inherit">Sınırlı veri</small>':risky?'<small style="display:block;color:inherit">Riskli</small>':'')+'</div>';
 }).join('');
-const showMissingDataRibbon=insufficientSystemData||limitedMatchData||limitedMsData;
 const missingDataRibbon=showMissingDataRibbon?'<div class="missing-data-ribbon" aria-hidden="true">EKSİK VERİ</div>':'';
 const systemPanel='<div class="panel full system-panel'+(showMissingDataRibbon?' has-missing-data':'')+'" style="border-width:1px;padding:7px"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🎯 Sistem Önerisi</span>'+systemDataWarning+'</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4>'+recommendedStatus+over25Status+half05Status+championsStatus+'<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:5px">'+systemMsCards+'</div></div><small>Yeşil: model puanı 80’in üzerinde ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+missingDataRibbon+'</div>';
 
@@ -339,7 +339,7 @@ return {
  html:Object.entries(panels).filter(([key])=>all||enabled.includes(key)).map(([,html])=>html).join(''),
  scores,
  insufficient:Object.keys(scores).filter(key=>scores[key]===null),
- limitedMatchData,
+ missingData:showMissingDataRibbon,
  hasAnalysisData,
  ...(all?{counts}:{})
 };
