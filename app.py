@@ -1030,10 +1030,64 @@ def open_matchday_results(league):
         return rows
 
 
+# Damir Devetak, Football Charts, CC BY 4.0, doi:10.5281/zenodo.23348754.
+FOOTBALL_CHARTS_LEAGUES = {
+    "eng.1": "premier", "eng.2": "cha", "eng.3": "eng1", "eng.4": "eng2",
+    "tur.1": "turkey1", "tur.2": "turkey2", "ger.1": "germany1",
+    "ger.2": "germany2", "ger.3": "germany3", "ita.1": "italy1",
+    "ita.2": "italy2", "ita.3": "italy3a italy3b", "esp.1": "spain1",
+    "esp.2": "spain2", "ned.1": "holland1", "ned.2": "holland2",
+    "fra.1": "france1", "fra.2": "france2", "ksa.1": "saudi1",
+    "por.1": "portugal1", "por.2": "portugal2", "pol.1": "poland1",
+    "pol.2": "poland2", "cze.1": "czech1", "cze.2": "czech2",
+    "bel.1": "belgium1", "sco.1": "scot-premier", "sco.2": "scot-champ",
+    "sco.3": "scot1", "sco.4": "scot2", "den.1": "denmark1",
+    "aut.1": "austria1", "sui.1": "swiss1", "gre.1": "greece1",
+    "nor.1": "norway", "swe.1": "sweden1", "hun.1": "hungary1",
+    "rou.1": "romania1", "rus.1": "russia", "srb.1": "serbia1",
+    "bra.1": "brazil1", "bra.2": "brazil2", "jpn.1": "japan1",
+    "jpn.2": "japan2", "kor.1": "korea1", "chn.1": "china",
+    "aus.1": "australia", "tha.1": "thai1", "ind.1": "india1",
+    "fin.1": "finland1", "irl.1": "ireland1",
+}
+
+
+def football_charts_results(league):
+    codes = FOOTBALL_CHARTS_LEAGUES.get(league, "").split()
+    if not codes:
+        return []
+    key = ("football_charts", 23348754)
+    with MATCH_FETCH_LOCKS.setdefault(key, Lock()):
+        cached = CACHE.get(key)
+        if not cached or (not cached["result"] and time.time() - cached["time"] >= 600):
+            groups = {}
+            url = "https://zenodo.org/api/records/23348754/files/football_charts_matches.csv/content"
+            try:
+                with urllib.request.urlopen(url, timeout=8) as response:
+                    data = response.read(9_800_280)
+                if len(data) != 9_800_279:
+                    raise ValueError("Incomplete Football Charts archive")
+                for row in csv.DictReader(io.StringIO(data.decode("utf-8-sig"))):
+                    ft = score_pair(*row["ft_result"].split(":")) if row["ft_result"].count(":") == 1 else None
+                    ht = score_pair(*row["ht_result"].split(":")) if row["ht_result"].count(":") == 1 else None
+                    if ft is None:
+                        continue
+                    groups.setdefault(row["league"], []).append({
+                        "date": row["match_date"], "home": row["home_team"], "away": row["away_team"],
+                        "ft_home": ft[0], "ft_away": ft[1],
+                        "ht_home": ht[0] if ht else None, "ht_away": ht[1] if ht else None,
+                    })
+            except (OSError, UnicodeError, ValueError, KeyError, csv.Error) as exc:
+                print(f"FOOTBALL_CHARTS_ERROR {exc}", flush=True)
+                groups = {}
+            cached = CACHE[key] = {"time": time.time(), "result": groups}
+    return [row for code in codes for row in cached["result"].get(code, ())]
+
+
 def merge_open_matchday_recent(match, side, primary):
     league = match.get("espn_league")
     cutoff = str(match.get("utcDate") or "")[:10]
-    if not cutoff or cutoff < "2026-01-01" or cutoff >= "2027-07-01":
+    if not cutoff:
         return primary
     primary_rows = (primary or {}).get("games") or []
     venue_rows = [row for row in primary_rows if row["venue"] == side]
@@ -1045,7 +1099,9 @@ def merge_open_matchday_recent(match, side, primary):
         return primary
     first_day = season_start(match["utcDate"], league)
     records = {}
-    for row in open_matchday_results(league):
+    current = open_matchday_results(league) if "2026-01-01" <= cutoff < "2027-07-01" else ()
+    archive = football_charts_results(league) if first_day <= "2026-07-31" else ()
+    for row in (*current, *archive):
         day = row.get("date") or ""
         if not first_day <= day < cutoff:
             continue
@@ -1107,7 +1163,7 @@ def merge_open_matchday_recent(match, side, primary):
     if not changed:
         return primary
     return {**(primary or {}), **summarize_team_games(merged, side),
-            "supplemental_source": "open-matchday"}
+            "supplemental_source": "open-matchday / Football Charts (CC BY 4.0)"}
 
 
 def espn_head_to_head(match):
@@ -1250,6 +1306,67 @@ def sportsdb_head_to_head(match):
             "under25": sum(g["home_goals"] + g["away_goals"] <= 2 for g in games),
             "source": "TheSportsDB (dogrulanmis gecmis maclar)"}
 
+def supplement_head_to_head(match, primary):
+    home = team_match_key(match["homeTeam"].get("name"))
+    away = team_match_key(match["awayTeam"].get("name"))
+    cutoff = str(match.get("utcDate") or "")[:10]
+    if not cutoff or not home or not away or home == away:
+        return primary
+    source_games = (primary or {}).get("games") or []
+    if len(source_games) >= 10 and len([game for game in source_games if game["at_home"]]) >= 5:
+        if all(game.get("half_goals") is not None for game in source_games[:10]):
+            return primary
+    games = {game["date"]: game for game in source_games}
+    changed = False
+    for row in football_charts_results(match.get("espn_league")):
+        day = row["date"]
+        if not day or day >= cutoff:
+            continue
+        teams = (team_match_key(row["home"]), team_match_key(row["away"]))
+        if teams not in ((home, away), (away, home)):
+            continue
+        at_home = teams[0] == home
+        sides = ("home", "away") if at_home else ("away", "home")
+        hg, ag = (row["ft_" + side] for side in sides)
+        hs, hc = (row["ht_" + side] for side in sides)
+        half_valid = hs is not None and hc is not None and 0 <= hs <= hg and 0 <= hc <= ag
+        existing = games.get(day)
+        if existing:
+            if (existing["at_home"], existing["home_goals"], existing["away_goals"]) == (at_home, hg, ag):
+                if half_valid and existing.get("half_goals") is None:
+                    games[day] = dict(existing, half_goals=(hs, hc))
+                    changed = True
+            continue
+        date = datetime.date.fromisoformat(day)
+        if any(abs((date - datetime.date.fromisoformat(game["date"])).days) <= 1 for game in source_games):
+            continue
+        game = {"date": day, "at_home": at_home, "home_goals": hg, "away_goals": ag,
+                "winner": "home" if hg > ag else "away" if hg < ag else "draw"}
+        if half_valid:
+            game["half_goals"] = (hs, hc)
+        games[day] = game
+        changed = True
+    if not changed:
+        return primary
+    ordered = sorted(games.values(), key=lambda game: game["date"], reverse=True)
+
+    def summarize(rows):
+        return {
+            "count": len(rows),
+            "home_wins": sum(g["winner"] == "home" for g in rows),
+            "away_wins": sum(g["winner"] == "away" for g in rows),
+            "draws": sum(g["winner"] == "draw" for g in rows),
+            "under25": sum(g["home_goals"] + g["away_goals"] <= 2 for g in rows),
+            "over25": sum(g["home_goals"] + g["away_goals"] > 2 for g in rows),
+            "kg_var": sum(g["home_goals"] > 0 and g["away_goals"] > 0 for g in rows),
+            "kg_yok": sum(g["home_goals"] == 0 or g["away_goals"] == 0 for g in rows),
+        }
+
+    return {**(primary or {}), **summarize(ordered), "games": ordered,
+            "venue_last5": summarize([g for g in ordered if g["at_home"]][:5]),
+            "supplemental_source": "Football Charts (CC BY 4.0)"}
+
+
 def champions_league_fixture(match):
     competition = match.get("competition") or {}
     return (
@@ -1358,7 +1475,12 @@ def analyze(match):
         except Exception as exc:
             value = None
             errors.append(f"{key}: {exc}")
-        if key != "head_to_head_last10":
+        if key == "head_to_head_last10":
+            try:
+                value = supplement_head_to_head(match, value)
+            except (ValueError, TypeError, KeyError) as exc:
+                errors.append(f"{key} Football Charts: {exc}")
+        else:
             side = "home" if key == "home_last5" else "away"
             try:
                 value = merge_open_matchday_recent(match, side, value)
