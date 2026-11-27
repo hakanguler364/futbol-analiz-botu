@@ -361,18 +361,18 @@ function syncLeagueCheckboxes(){document.querySelectorAll('#leagueCheckboxes inp
 function renderLeagueCheckboxes(){const box=el('leagueCheckboxes');if(!box)return;box.replaceChildren();for(const option of el('leagueFilter').options){if(!option.value)continue;const label=document.createElement('label');label.style.cssText='display:flex;gap:9px;align-items:center;padding:7px;border-bottom:1px solid #2b4057';const input=document.createElement('input');input.type='checkbox';input.value=option.value;input.checked=option.selected;input.onchange=()=>{option.selected=input.checked;el('leagueSummary').textContent=selectedLeagues().length+' lig seçildi. Seçilen maçları getir düğmesine basın.';};label.append(input,document.createTextNode(option.textContent));box.append(label);}}
 function setAllLeagues(checked){for(const option of el('leagueFilter').options)option.selected=checked;syncLeagueCheckboxes();el('leagueSummary').textContent=checked?'Tüm ligler seçildi. Seçilen maçları getir düğmesine basın.':'Seçim temizlendi. Lig seçin veya tüm maçları getirin.';}
 function selectedMatches(){const leagues=selectedLeagues();const all=!leagues.length||leagues.length===el('leagueFilter').options.length;return games.filter(m=>(all||leagues.includes(m.espn_league))&&matchTimeAllowed(m));}
-function predictionChips(scores = {}, insufficient = [], missingData = false) {
+function predictionChips(scores = {}, insufficient = [], marketReady = {}) {
  const msKeys = ['ms1', 'ms0', 'ms2'];
  const other = Object.entries(scores).filter(([key]) => !msKeys.includes(key)).map(([key, value]) => {
   const available = Number.isFinite(value);
-  const color = available ? (missingData?'#ff8794':predictionColor(value)) : '#aebcd2';
+  const color = available ? (!marketReady[key]?'#ff8794':predictionColor(Math.round(value))) : '#aebcd2';
   return '<span style="display:inline-block;margin:3px;padding:6px 9px;border-radius:9px;border:1px solid '+(available?color:'#526785')+';color:'+color+'">'+predictionLabels[key]+': '+(available?Math.round(value)+' puan':insufficient.includes(key)?'Veri yetersiz':'Veri yok')+'</span>';
  }).join('');
  if (!canViewPanel('result') && !canViewPanel('system')) return other;
  const cells = msKeys.map(key => {
   const value = scores[key];
   const available = Number.isFinite(value);
-  return '<span><b>'+predictionLabels[key]+'</b><strong style="color:'+(available?(missingData?'#ff8794':predictionColor(value)):'#aebcd2')+'">'+(available?Math.round(value)+' puan':'Veri yok')+'</strong></span>';
+  return '<span><b>'+predictionLabels[key]+'</b><strong style="color:'+(available?(!marketReady[key]?'#ff8794':predictionColor(Math.round(value))):'#aebcd2')+'">'+(available?Math.round(value)+' puan':'Veri yok')+'</strong></span>';
  }).join('');
  return other+'<div class="prediction-ms" role="group" aria-label="Maç sonucu">'+cells+'</div>';
 }
@@ -386,7 +386,7 @@ function compareKickoff(a,b) {
 function predictionMatches(){
  const type=el('predictionType').value,min=Number(el('predictionMin').value);
  return selectedMatches().filter(m=>results[m.id]?.hasAnalysisData&&
-  (type==='all'||(!results[m.id].missingData&&Number.isFinite(predictionScores[m.id]?.[type])&&predictionScores[m.id][type]>=min))).sort(compareKickoff);
+  (type==='all'||(results[m.id].marketReady?.[type]&&Number.isFinite(predictionScores[m.id]?.[type])&&Math.round(predictionScores[m.id][type])>=min))).sort(compareKickoff);
 }
 function dataWarning(id){
  const d=dataCounts[id];if(!d)return '';
@@ -425,7 +425,7 @@ el('matches').innerHTML=filtered.map(m=>`
 <p class="muted">🏆 <b>${esc(trLeague(m.competition?.name))}</b> · Türkiye saati</p>
 ${canViewPanel('teams')?'<div id="team-info-'+esc(m.id)+'" class="team-info-box"><span>📊 Lig sıralaması yükleniyor...</span><span>💶 Kadro değeri: Veri bulunamadı</span></div>':''}
 
-<div id="data-warning-${esc(m.id)}">${dataWarning(m.id)}</div><div id="prediction-${esc(m.id)}">${predictionChips(predictionScores[m.id],results[m.id]?.insufficient,results[m.id]?.missingData)}</div>
+<div id="data-warning-${esc(m.id)}">${dataWarning(m.id)}</div><div id="prediction-${esc(m.id)}">${predictionChips(predictionScores[m.id],results[m.id]?.insufficient,results[m.id]?.marketReady)}</div>
 <div class="muted">${canViewPanel('odds')?'<div id="odds-'+esc(m.id)+'">'+bettingOddsPanel(m)+'</div>':''}${renderedAnalyses[m.id]}</div>
 </div>
 `).join('')||(games.length?'<p>Analiz verisi doğrulanmış ve filtreye uyan maç henüz bulunamadı.</p>':'<p>Seçilen tarihte veri kaynağından maç alınamadı.</p>');

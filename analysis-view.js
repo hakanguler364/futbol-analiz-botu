@@ -204,20 +204,41 @@ const requiredScores=[msResult.ms1,msResult.ms0,msResult.ms2,over25Score,scores.
 if(championsRule)requiredScores.push(scores.over15,scores.homeHalf);
 const insufficientSystemData=requiredScores.some(score=>!Number.isFinite(score));
 const showMissingDataRibbon=insufficientSystemData||limitedMatchData||limitedMsData;
-const optionRow=(market,label,score,extraRisk=false,counts=null)=>{
+const msReady=fullCounts.every(count=>count>=5)&&!limitedMsData;
+const marketReady={
+ over15:Number.isFinite(scores.over15),
+ homeHalf:Number.isFinite(scores.homeHalf),
+ awayHalf:Number.isFinite(scores.awayHalf),
+ half05:Number.isFinite(scores.half05),
+ half15:Number.isFinite(scores.half15),
+ ms1:msReady&&Number.isFinite(scores.ms1),
+ ms0:msReady&&Number.isFinite(scores.ms0),
+ ms2:msReady&&Number.isFinite(scores.ms2)
+};
+const marketRisk={
+ half05:championsRule?championsHalfRisk:riskFlag,
+ homeHalf:championsRule?championsHomeHalfRisk:homeDefenseRisk,
+ awayHalf:awayDefenseRisk,
+ ms1:msLeader?.[0]==='MS 1'&&Boolean(msClose||goalConflict),
+ ms0:msLeader?.[0]==='MS 0'&&Boolean(msClose||goalConflict),
+ ms2:msLeader?.[0]==='MS 2'&&Boolean(msClose||goalConflict)
+};
+const optionRow=(market,label,score,extraRisk=false,counts=null,archiveOption=true)=>{
  const points=Number.isFinite(score)?Math.round(score):null;
- const playable=points!==null&&points>80&&!extraRisk&&!showMissingDataRibbon;
- if(playable&&archive&&market)archive[market]=points;
- const background=showMissingDataRibbon?'#351d2b':playable?'#75e8a6':'#ff858e';
- const status=points===null?'Yetersiz veri':points+' puan'+(playable?'':showMissingDataRibbon?' · Sınırlı veri':' · Riskli');
+ const green=points!==null&&points>=80&&!extraRisk;
+ if(archiveOption&&archive&&market&&green&&points>80&&!showMissingDataRibbon)archive[market]=points;
+ const background=points===null?'#351d2b':green?'#75e8a6':'#ff858e';
+ const status=points===null?'Yetersiz veri':points+' puan'+(extraRisk?' · Riskli':'');
  const sample=points===null&&counts
   ?'<small style="display:block;color:inherit">Doğrulanmış maç: İç saha '+counts[0]+' · Deplasman '+counts[1]+
    (counts.some(count=>count<5)?' · En az 5’er maç gerekli':' · Gol toplamları eksik veya geçersiz')+'</small>'
   :'';
- return '<div style="margin:3px 0;padding:3px 7px;border-radius:5px;background:'+background+';color:'+(showMissingDataRibbon?'#ffd5da':'#101826')+'"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span>'+label+'</span><b style="text-align:right">'+status+'</b></div>'+sample+'</div>';
+ return '<div style="margin:3px 0;padding:3px 7px;border-radius:5px;background:'+background+';color:'+(points===null?'#ffd5da':'#101826')+'"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span>'+label+'</span><b style="text-align:right">'+status+'</b></div>'+sample+'</div>';
 };
 if(msLeader&&!limitedMsData)optionRow(msLeader[0],msLeader[0],msLeader[1],Boolean(msClose||goalConflict));
 const recommendedStatus=safest?optionRow(safest[0],'⚽ '+safest[0],safest[1],Boolean(riskFlag&&safest[0]==='İY 0,5 Üst')):'';
+const extraFullStatus=!championsRule&&safest?.[0]!=='1,5 Üst'
+ ?optionRow(null,'⚽ 90 dk 1,5 Üst',scores.over15,false,fullCounts,false):'';
 const over25Status=optionRow('2,5 Üst','⚽ 2,5 Üst',over25Score,false,fullCounts);
 const championsOption=(market,label,key,risk=false)=>optionRow(market,label,scores[key],risk,key==='over15'?championsFullCounts:halfCounts);
 const half05Status=championsRule
@@ -234,11 +255,11 @@ const systemDataWarning=insufficientSystemData
 const systemMsCards=[['MS 1',msResult.ms1],['MS 0',msResult.ms0],['MS 2',msResult.ms2]].map(([label,score])=>{
  const available=Number.isFinite(score);
  const risky=msLeader?.[0]===label&&Boolean(msClose||goalConflict);
- const background=showMissingDataRibbon?'#351d2b':available&&score>80&&!risky?'#75e8a6':'#ff858e';
- return '<div style="padding:4px;text-align:center;border-radius:5px;background:'+background+';color:'+(showMissingDataRibbon?'#ffd5da':'#101826')+'"><div>'+label+'</div><strong>'+(available?score:'—')+'</strong>'+(showMissingDataRibbon?'<small style="display:block;color:inherit">Sınırlı veri</small>':risky?'<small style="display:block;color:inherit">Riskli</small>':'')+'</div>';
+ const background=!msReady||!available?'#351d2b':score>=80&&!risky?'#75e8a6':'#ff858e';
+ return '<div style="padding:4px;text-align:center;border-radius:5px;background:'+background+';color:'+(!msReady||!available?'#ffd5da':'#101826')+'"><div>'+label+'</div><strong>'+(available?score:'—')+'</strong>'+(!msReady||!available?'<small style="display:block;color:inherit">Sınırlı veri</small>':risky?'<small style="display:block;color:inherit">Riskli</small>':'')+'</div>';
 }).join('');
 const missingDataRibbon=showMissingDataRibbon?'<div class="missing-data-ribbon" aria-hidden="true">EKSİK VERİ</div>':'';
-const systemPanel='<div class="panel full system-panel'+(showMissingDataRibbon?' has-missing-data':'')+'" style="border-width:1px;padding:7px"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🎯 Sistem Önerisi</span>'+systemDataWarning+'</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4>'+recommendedStatus+over25Status+half05Status+championsStatus+'<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:5px">'+systemMsCards+'</div></div><small>Yeşil: model puanı 80’in üzerinde ve ilgili risk kontrolü uygun. Kırmızı: düşük puan, yetersiz veri veya risk. Model puanları garanti değildir.</small>'+goalConflictWarning+missingDataRibbon+'</div>';
+const systemPanel='<div class="panel full system-panel'+(showMissingDataRibbon?' has-missing-data':'')+'" style="border-width:1px;padding:7px"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🎯 Sistem Önerisi</span>'+systemDataWarning+'</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4>'+recommendedStatus+extraFullStatus+over25Status+half05Status+championsStatus+'<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:5px">'+systemMsCards+'</div></div><small>Yeşil: ilgili tahminin verisi yeterli, model puanı 80 veya üzeri ve risk kontrolü uygun. Eksik Veri uyarısı maçın diğer analizlerini de kapsar. Model puanı başarı garantisi değildir.</small>'+goalConflictWarning+missingDataRibbon+'</div>';
 
 const trialVotes=[0,0,0];
 let privateDefense='';
@@ -338,6 +359,7 @@ if(!all){
 return {
  html:Object.entries(panels).filter(([key])=>all||enabled.includes(key)).map(([,html])=>html).join(''),
  scores,
+ marketReady:Object.fromEntries(Object.keys(scores).map(key=>[key,marketReady[key]&&!marketRisk[key]])),
  insufficient:Object.keys(scores).filter(key=>scores[key]===null),
  missingData:showMissingDataRibbon,
  hasAnalysisData,
