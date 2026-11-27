@@ -403,15 +403,15 @@ def matches(date, league_filter=None, *, max_age=300):
             except Exception as exc:
                 print(f"FIXTURE_LEAGUE_ERROR {requests[future]} {date} {exc}", flush=True)
     # Independent global daily fixture feed; merge with ESPN without replacing it.
-    def sportsdb():
-        url = "https://www.thesportsdb.com/api/v1/json/123/eventsday.php?" + urllib.parse.urlencode({"d": date, "s": "Soccer"})
+    def sportsdb(feed_day):
+        url = "https://www.thesportsdb.com/api/v1/json/123/eventsday.php?" + urllib.parse.urlencode({"d": feed_day, "s": "Soccer"})
         data = sportsdb_json(url)
         out = []
         for event in data.get("events") or []:
             home, away = event.get("strHomeTeam"), event.get("strAwayTeam")
             if not home or not away:
                 continue
-            kickoff = (event.get("strTimestamp") or ((event.get("dateEvent") or date) + "T" + (event.get("strTime") or "00:00:00") + "Z"))
+            kickoff = (event.get("strTimestamp") or ((event.get("dateEvent") or feed_day) + "T" + (event.get("strTime") or "00:00:00") + "Z"))
             uid = int.from_bytes(hashlib.sha256(("sportsdb"+str(event.get("idEvent"))).encode()).digest()[:7], "big")
             status = str(event.get("strStatus") or "").strip().casefold()
             scores = {"full": score_pair(event.get("intHomeScore"), event.get("intAwayScore"))} if status in {"match finished", "ft", "full time"} else {}
@@ -420,7 +420,13 @@ def matches(date, league_filter=None, *, max_age=300):
     try:
         # Keep the independent feed available for a specifically selected Turkish league.
         # Filter strictly by competition to avoid mixing unrelated fixtures.
-        extra_events = sportsdb() if not league_filter or league_filter in ("tur.1", "tur.2") else []
+        extra_events = []
+        if not league_filter or league_filter in ("tur.1", "tur.2"):
+            for feed_day in (date, (datetime.date.fromisoformat(date) - datetime.timedelta(days=1)).isoformat()):
+                try:
+                    extra_events.extend(sportsdb(feed_day))
+                except (OSError, ValueError, TypeError) as exc:
+                    print("SPORTSDB_FIXTURE_ERROR " + str(exc)[:180], flush=True)
         if league_filter in ("tur.1", "tur.2"):
             def is_requested_turkish_league(event):
                 name = str(event.get("competition", {}).get("name", "")).casefold()
@@ -473,6 +479,18 @@ def matches(date, league_filter=None, *, max_age=300):
                 "awayTeam": {"name": "Ümraniyespor", "id": None},
                 "source": "TFF doğrulanmış fikstür", "fixture_verified": True})
     # Filter women's football from all fixture sources.
+    local_day = datetime.date.fromisoformat(date)
+    turkey_offset = datetime.timedelta(hours=3)
+
+    def in_requested_day(match):
+        try:
+            kickoff = datetime.datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
+            if kickoff.tzinfo is None:
+                kickoff = kickoff.replace(tzinfo=datetime.timezone.utc)
+            return (kickoff.astimezone(datetime.timezone.utc) + turkey_offset).date() == local_day
+        except (KeyError, ValueError, TypeError, AttributeError):
+            return False
+
     women_terms = ("women", "woman", "female", "femen", "feminin", "femmin", "frauen", "damen", "kadın", "kadin", "ladies", "wsl", "nwsl", "liga f")
     def is_womens_match(match):
         names = [match.get("competition", {}).get("name", ""), match.get("homeTeam", {}).get("name", ""), match.get("awayTeam", {}).get("name", "")]
@@ -480,10 +498,10 @@ def matches(date, league_filter=None, *, max_age=300):
             lowered = str(name).casefold()
             if any(term in lowered for term in women_terms):
                 return True
-            if re.search(r"(?<![a-z])(?:w|f)(?![a-z])", lowered):
+            if re.search(r"(?:\([wf]\)|\s+w)\s*$", lowered):
                 return True
         return False
-    items = [m for m in items if not is_womens_match(m)]
+    items = list({m["id"]: m for m in items if in_requested_day(m) and not is_womens_match(m)}.values())
     # Different providers may publish the same fixture with different team spelling.
     # Prefer a record with usable team IDs / ESPN history rather than a fixture-only copy.
     def fixture_key(name):
@@ -634,6 +652,23 @@ def sportsdb_team_alias(name):
 PROVIDER_CACHE = {}
 PROVIDER_COOLDOWN = {}
 
+
+ESPN_HISTORY_CACHE = {}
+
+
+def espn_history_json(url, timeout):
+    now = time.monotonic()
+    cached = ESPN_HISTORY_CACHE.get(url)
+    if cached and now - cached["time"] < 600:
+        return cached["data"]
+    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        data = json.load(response)
+    if len(ESPN_HISTORY_CACHE) >= 256:
+        ESPN_HISTORY_CACHE.pop(next(iter(ESPN_HISTORY_CACHE), None), None)
+    ESPN_HISTORY_CACHE[url] = {"time": now, "data": data}
+    return data
+
 def sportsdb_json(url):
     now = time.time()
     cached = PROVIDER_CACHE.get(url)
@@ -739,9 +774,7 @@ def espn_halftime_scores(league, event_id, team_id):
            urllib.parse.quote(str(league), safe="") +
            "/summary?event=" + urllib.parse.quote(str(event_id), safe=""))
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=5) as response:
-            data = json.load(response)
+        data = espn_history_json(url, timeout=5)
         header = (data.get("header") or {}).get("competitions") or []
         competitors = (header[0] if header else {}).get("competitors") or []
         if len(competitors) != 2:
@@ -808,14 +841,11 @@ def espn_recent(match, side):
     url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/" +
            urllib.parse.quote(str(league), safe="") + "/teams/" +
            urllib.parse.quote(str(team_id), safe="") + "/schedule?limit=300")
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
     # Always request the fixture year: ESPN's default schedule can be a different season.
     data = {"events": []}
     for candidate in (url + "&season=" + str(kickoff.year), url + "&season=" + str(kickoff.year - 1), url):
         try:
-            request = urllib.request.Request(candidate, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-            with urllib.request.urlopen(request, timeout=12) as response:
-                payload = json.load(response)
+            payload = espn_history_json(candidate, timeout=12)
             if payload.get("events"):
                 data["events"].extend(payload["events"])
         except (OSError, ValueError, TypeError):
@@ -907,9 +937,7 @@ def espn_head_to_head(match):
         for year in range(kickoff.year, kickoff.year - 21, -1):
             season_url = team_url + "&season=" + str(year)
             try:
-                req = urllib.request.Request(season_url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-                with urllib.request.urlopen(req, timeout=7) as response:
-                    data = json.load(response)
+                data = espn_history_json(season_url, timeout=7)
                 for event in data.get("events") or []:
                     event_id = event.get("id")
                     if event_id and event_id in seen_event_ids:

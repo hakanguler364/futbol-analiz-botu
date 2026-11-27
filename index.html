@@ -254,9 +254,9 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 </section>
 
 <div class="cards">
-<div class="card">Analize uygun maç<div class="num" id="total">—</div></div>
-<div class="card">Analiz edilen<div class="num" id="analyzed">0</div></div>
-<div class="card">Tamamlanan<div class="num" id="success">0</div></div>
+<div class="card">Bulunan maç<div class="num" id="total">—</div></div>
+<div class="card">İşlenen maç<div class="num" id="analyzed">0</div></div>
+<div class="card">Verisi tam<div class="num" id="success">0</div></div>
 <div class="card">Hatalı / eksik<div class="num" id="failed">0</div></div>
 </div>
 
@@ -331,7 +331,7 @@ location.replace('/');
 }
 
 function update(){
-el('total').textContent=ok;
+el('total').textContent=selectedMatches().length;
 el('analyzed').textContent=done;
 el('success').textContent=ok;
 el('failed').textContent=bad;
@@ -360,7 +360,7 @@ function selectedLeagues(){return Array.from(el('leagueFilter').selectedOptions)
 function syncLeagueCheckboxes(){document.querySelectorAll('#leagueCheckboxes input').forEach(c=>{c.checked=Array.from(el('leagueFilter').selectedOptions).some(o=>o.value===c.value);});}
 function renderLeagueCheckboxes(){const box=el('leagueCheckboxes');if(!box)return;box.replaceChildren();for(const option of el('leagueFilter').options){if(!option.value)continue;const label=document.createElement('label');label.style.cssText='display:flex;gap:9px;align-items:center;padding:7px;border-bottom:1px solid #2b4057';const input=document.createElement('input');input.type='checkbox';input.value=option.value;input.checked=option.selected;input.onchange=()=>{option.selected=input.checked;el('leagueSummary').textContent=selectedLeagues().length+' lig seçildi. Seçilen maçları getir düğmesine basın.';};label.append(input,document.createTextNode(option.textContent));box.append(label);}}
 function setAllLeagues(checked){for(const option of el('leagueFilter').options)option.selected=checked;syncLeagueCheckboxes();el('leagueSummary').textContent=checked?'Tüm ligler seçildi. Seçilen maçları getir düğmesine basın.':'Seçim temizlendi. Lig seçin veya tüm maçları getirin.';}
-function selectedMatches(){const leagues=selectedLeagues();return games.filter(m=>(!leagues.length||leagues.includes(m.espn_league))&&matchTimeAllowed(m));}
+function selectedMatches(){const leagues=selectedLeagues();const all=!leagues.length||leagues.length===el('leagueFilter').options.length;return games.filter(m=>(all||leagues.includes(m.espn_league))&&matchTimeAllowed(m));}
 function predictionChips(scores = {}, insufficient = [], missingData = false) {
  const msKeys = ['ms1', 'ms0', 'ms2'];
  const other = Object.entries(scores).filter(([key]) => !msKeys.includes(key)).map(([key, value]) => {
@@ -418,7 +418,7 @@ function bettingOddsPanel(m){
 }
 function renderGames(){
 const filtered=predictionMatches();
-el('predictionSummary').textContent=filtered.length+' uygun maç';
+el('predictionSummary').textContent=filtered.length+' maç gösteriliyor · '+selectedMatches().length+' maç bulundu';
 el('matches').innerHTML=filtered.map(m=>`
 <div class="match">
 <div class="match-head"><b>🕒 ${esc(kickoffTR(m.utcDate))}</b><span class="muted">⚽ Maç Analizi</span></div><div class="team-versus"><div class="match-team match-team-home">${badge(m.homeTeam)}<strong>${esc(m.homeTeam?.name)}</strong></div><span class="versus-label">VS</span><div class="match-team match-team-away">${badge(m.awayTeam)}<strong>${esc(m.awayTeam?.name)}</strong></div></div>
@@ -515,7 +515,7 @@ async function loadRecommendationResults(manual = false){
   title.textContent = 'Toplam tahmin sayısı: '+total;
   const coverage = document.createElement('div');
   coverage.className = 'muted';
-  coverage.textContent = date+' · Programdaki maç: '+(report.total_matches || '—')+' · Doğrulanmış tahmini olan maç: '+report.predicted_matches;
+  coverage.textContent = date+' · Fikstür: '+(report.total_matches || '—')+' maç · Bu kutudaki öneriler: '+report.predicted_matches+' maç';
   summary.replaceChildren(title, coverage);
   if(report.unverified_matches){
    const unverified = document.createElement('div');
@@ -651,7 +651,7 @@ async function analyze(match, date, current){
   clearTimeout(timeout);
   if(current===runId){
    done++;
-   if(results[id]?.hasAnalysisData)ok++;else bad++;
+   if(results[id]?.hasAnalysisData && !results[id].missingData)ok++;else bad++;
    recordLeagueHealth(match,results[id]);
    update();
   }
@@ -705,7 +705,7 @@ function pumpAnalyses(){
   el('progress').textContent=done+'/'+queued.size+' maç işlendi'+(loading?' · Maç listesi yükleniyor':'');
  }else{
   el('progress').textContent=done+'/'+queued.size+' maç işlendi';
-  if(queued.size && !ok)el('matches').textContent='Analiz için yeterli verisi olan maç bulunamadı.';
+  if(queued.size && !Object.values(results).some(result=>result.hasAnalysisData))el('matches').textContent='Analiz için yeterli verisi olan maç bulunamadı.';
   if(queued.size && !analysisFinished){
    analysisFinished=true;
    refreshRecommendationsAfterAnalysis();
