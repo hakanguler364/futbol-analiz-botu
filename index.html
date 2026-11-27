@@ -384,8 +384,12 @@ function compareKickoff(a,b) {
 }
 function predictionMatches(){
  const type=el('predictionType').value,min=Number(el('predictionMin').value);
- return selectedMatches().filter(m=>results[m.id]?.hasAnalysisData&&
-  (type==='all'||(results[m.id].marketReady?.[type]&&Number.isFinite(predictionScores[m.id]?.[type])&&Math.round(predictionScores[m.id][type])>=min))).sort(compareKickoff);
+ return selectedMatches().filter(match=>{
+  const view=results[match.id];
+  if(!view?.hasAnalysisData||view.missingData)return false;
+  const score=predictionScores[match.id]?.[type];
+  return type==='all'||(view.marketReady?.[type]&&Number.isFinite(score)&&Math.round(score)>=min);
+ }).sort(compareKickoff);
 }
 function dataWarning(id){
  const d=dataCounts[id];if(!d)return '';
