@@ -145,17 +145,19 @@ const h2hCountRow=(label,count,total=latestH2h.count,threshold=7,percentage=fals
  return '<div class="metric"'+(green?' style="background:#75e8a6;color:#102026;border-radius:5px;padding:5px 8px"':'')+
   '><span>'+label+'</span><b class="'+(green?'':'score-red')+'">'+count+'/'+total+(percentage?' — %'+Math.round(100*count/total):'')+'</b></div>';
 };
+const rivalryResults=record=>
+ metric('<span class="team-name-home">'+esc(r.home)+'</span> galibiyet',record.home_wins)+
+ metric('Beraberlik',record.draws)+
+ metric('<span class="team-name-away">'+esc(r.away)+'</span> galibiyet',record.away_wins);
 const h2hPanel='<div class="panel"><h3>🤝 Kendi Aralarındaki Son 10 Doğrulanmış Maç</h3>'+
- (latestH2h.count?'<div class="metric"><span class="team-name-home">'+esc(r.home)+': <b>'+latestH2h.home_wins+
- '</b></span><span>Beraberlik: <b>'+latestH2h.draws+'</b></span><span class="team-name-away">'+esc(r.away)+': <b>'+latestH2h.away_wins+
- '</b></span></div>'+metric('🤝 Beraberlik oranı','%'+drawRate+' ('+latestH2h.draws+'/'+latestH2h.count+')')+
- h2hCountRow('2,5 Üst',latestH2h.over25)+h2hCountRow('KG Var',latestH2h.kg_var)+
+ (latestH2h.count?rivalryResults(latestH2h)+rivalryTag(latestH2h)+metric('🤝 Beraberlik oranı','%'+drawRate+' ('+latestH2h.draws+'/'+latestH2h.count+')')+
+ h2hCountRow('⚽ 2,5 Üst',latestH2h.over25,latestH2h.count,7,true)+h2hCountRow('🤝 KG Var',latestH2h.kg_var,latestH2h.count,7,true)+
  (drawAlert?'<div class="recommend">⚠️ Beraberlik eğilimi yüksek — dikkat!</div>':'')+
- rivalryTag(latestH2h)+'<small>'+latestH2h.count+' doğrulanmış geçmiş karşılaşma. Geçmiş oranlar tahmin garantisi değildir.</small>'
+ '<small>'+latestH2h.count+' doğrulanmış geçmiş karşılaşma. Geçmiş oranlar tahmin garantisi değildir.</small>'
  :'<small>Doğrulanmış geçmiş eşleşme bulunamadı.</small>')+h2hNotice+'</div>';
 const venueH=h?.venue_last5;
 const venueHPanel='<div class="panel"><h3>🏟 Kendi Aralarında Ev Sahibinin Sahasında (Son 5)</h3>'+(venueH?.count<5?'<div class="data-warning '+(venueH?.count<3?'red':'amber')+'">⚠️ SINIRLI İÇ SAHA REKABET VERİSİ <span>Bulunan: '+(venueH?.count||0)+' / 5 maç</span></div>':'')+(venueH?.count?
-metric(esc(r.home)+' galibiyet',venueH.home_wins)+metric('Beraberlik',venueH.draws)+metric(esc(r.away)+' galibiyet',venueH.away_wins)+rivalryTag(venueH)+rivalryRecent(h?.games,true)+
+rivalryResults(venueH)+rivalryTag(venueH)+rivalryRecent(h?.games,true)+
 h2hCountRow('⚽ 2,5 Üst',venueH.over25,venueH.count,4,true)+
 h2hCountRow('🤝 KG Var',venueH.kg_var,venueH.count,4,true)+
 '<small>'+venueH.count+'/5 doğrulanmış karşılaşma. Üst ve KG Var oranları yalnızca bu sahadaki ikili maçlara dayanır; tahmin garantisi değildir.</small>':
