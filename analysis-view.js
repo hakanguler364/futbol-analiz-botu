@@ -140,11 +140,9 @@ const h2hPanel='<div class="panel"><h3>🤝 Kendi Aralarındaki Son 10 Doğrulan
 const venueH=h?.venue_last5;
 const venueHPanel='<div class="panel"><h3>🏟 Kendi Aralarında Ev Sahibinin Sahasında (Son 5)</h3>'+(venueH?.count<5?'<div class="data-warning '+(venueH?.count<3?'red':'amber')+'">⚠️ SINIRLI İÇ SAHA REKABET VERİSİ <span>Bulunan: '+(venueH?.count||0)+' / 5 maç</span></div>':'')+(venueH?.count?
 metric(esc(r.home)+' galibiyet',venueH.home_wins)+metric('Beraberlik',venueH.draws)+metric(esc(r.away)+' galibiyet',venueH.away_wins)+rivalryTag(venueH)+rivalryRecent(h?.games,true)+
-metric('⚽ 2,5 Alt',venueH.under25+' / '+venueH.count+' — %'+Math.round(100*venueH.under25/venueH.count))+
 metric('⚽ 2,5 Üst',venueH.over25+' / '+venueH.count+' — %'+Math.round(100*venueH.over25/venueH.count))+
 metric('🤝 KG Var',venueH.kg_var+' / '+venueH.count+' — %'+Math.round(100*venueH.kg_var/venueH.count))+
-metric('🚫 KG Yok',venueH.kg_yok+' / '+venueH.count+' — %'+Math.round(100*venueH.kg_yok/venueH.count))+
-'<small>'+venueH.count+'/5 doğrulanmış karşılaşma. Alt/Üst ve KG oranları yalnızca bu sahadaki ikili maçlara dayanır; tahmin garantisi değildir.</small>':
+'<small>'+venueH.count+'/5 doğrulanmış karşılaşma. Üst ve KG Var oranları yalnızca bu sahadaki ikili maçlara dayanır; tahmin garantisi değildir.</small>':
 '<small>Bu sahada doğrulanmış karşılaşma bulunamadı.</small>')+'</div>';
 const homeAttack=avg(a,'scored'),awayConcede=avg(b,'conceded'),awayAttack=avg(b,'scored'),homeConcede=avg(a,'conceded');
 const comparePanel='<div class="panel"><h3>📊 Karşılaştırmalı Analiz (90 Dakika)</h3>'+[['🏠 Ev sahibi gol atma (Ort.)',homeAttack],['🏠 Ev sahibi gol yeme (Ort.)',homeConcede],['✈️ Deplasman gol atma (Ort.)',awayAttack],['✈️ Deplasman gol yeme (Ort.)',awayConcede]].map(([n,v])=>'<div class="metric"><span>'+n+'</span><b class="'+goalValueColor(v)+'">'+fmtAvg(v)+'</b></div><div class="bar-track"><div class="bar-fill" style="width:'+(v===null?0:Math.min(100,v/2*100))+'%;background:'+(v===null?'#68798e':v<0.85?'#ff7c99':v>=1.25?'#43e982':'#ffe05a')+'"></div></div>').join('')+'<small>Genel maç ortalaması; ilk yarı ortalaması değildir.</small></div>';
