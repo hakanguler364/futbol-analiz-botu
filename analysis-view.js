@@ -124,10 +124,10 @@ const h2hNotice=latestH2h.count<10
 const rivalryLabel=(x)=>{if(!x?.count)return '';const w=Number(x.home_wins)||0,d=Number(x.draws)||0,l=Number(x.away_wins)||0;if(d>=Math.ceil(x.count*.5)||Math.abs(w-l)<=1)return 'İkili rekabet dengeli';return w>l?'Ev sahibi galibiyet üstünlüğü':'Deplasman galibiyet üstünlüğü';};
 const rivalryTag=(x)=>!x?.count?'':'<div class="metric"><span>📈 Galibiyet performansı</span><b>'+rivalryLabel(x)+'</b></div>';
 const rivalryRecent=(games,venueOnly=false)=>{const sorted=(Array.isArray(games)?games:[]).filter(g=>g&&/^\\d{4}-\\d{2}-\\d{2}/.test(String(g.date||''))&&['home','away','draw'].includes(g.winner)&&(!venueOnly||g.at_home===true)).sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);if(!sorted.length)return '';const hw=sorted.filter(g=>g.winner==='home').length,aw=sorted.filter(g=>g.winner==='away').length,d=sorted.length-hw-aw;const label=d>=3||hw===aw?'Dengeli':hw>aw?'Ev sahibi üstün':'Deplasman üstün';const first=sorted[0].winner;let streak=0;if(first!=='draw'){for(const g of sorted){if(g.winner!==first)break;streak++;}}return '<div class="metric"><span>Son '+sorted.length+' ikili maç</span><b>'+hw+'G Ev · '+d+'B · '+aw+'G Dep — '+label+'</b></div>'+(streak>=2?'<div class="metric"><span>🔥 Güncel galibiyet serisi</span><b>'+(first==='home'?'Ev sahibi':'Deplasman')+' üst üste '+streak+' galibiyet</b></div>':'<div class="metric"><span>Güncel galibiyet serisi</span><b>Yok</b></div>');};
-const h2hCountRow=(label,count)=>{
- const green=count>=7;
+const h2hCountRow=(label,count,total=latestH2h.count,threshold=7,percentage=false)=>{
+ const green=count>=threshold;
  return '<div class="metric"'+(green?' style="background:#75e8a6;color:#102026;border-radius:5px;padding:5px 8px"':'')+
-  '><span>'+label+'</span><b class="'+(green?'':'score-red')+'">'+count+'/'+latestH2h.count+'</b></div>';
+  '><span>'+label+'</span><b class="'+(green?'':'score-red')+'">'+count+'/'+total+(percentage?' — %'+Math.round(100*count/total):'')+'</b></div>';
 };
 const h2hPanel='<div class="panel"><h3>🤝 Kendi Aralarındaki Son 10 Doğrulanmış Maç</h3>'+
  (latestH2h.count?'<div class="metric"><span class="team-name-home">'+esc(r.home)+': <b>'+latestH2h.home_wins+
@@ -140,8 +140,8 @@ const h2hPanel='<div class="panel"><h3>🤝 Kendi Aralarındaki Son 10 Doğrulan
 const venueH=h?.venue_last5;
 const venueHPanel='<div class="panel"><h3>🏟 Kendi Aralarında Ev Sahibinin Sahasında (Son 5)</h3>'+(venueH?.count<5?'<div class="data-warning '+(venueH?.count<3?'red':'amber')+'">⚠️ SINIRLI İÇ SAHA REKABET VERİSİ <span>Bulunan: '+(venueH?.count||0)+' / 5 maç</span></div>':'')+(venueH?.count?
 metric(esc(r.home)+' galibiyet',venueH.home_wins)+metric('Beraberlik',venueH.draws)+metric(esc(r.away)+' galibiyet',venueH.away_wins)+rivalryTag(venueH)+rivalryRecent(h?.games,true)+
-metric('⚽ 2,5 Üst',venueH.over25+' / '+venueH.count+' — %'+Math.round(100*venueH.over25/venueH.count))+
-metric('🤝 KG Var',venueH.kg_var+' / '+venueH.count+' — %'+Math.round(100*venueH.kg_var/venueH.count))+
+h2hCountRow('⚽ 2,5 Üst',venueH.over25,venueH.count,4,true)+
+h2hCountRow('🤝 KG Var',venueH.kg_var,venueH.count,4,true)+
 '<small>'+venueH.count+'/5 doğrulanmış karşılaşma. Üst ve KG Var oranları yalnızca bu sahadaki ikili maçlara dayanır; tahmin garantisi değildir.</small>':
 '<small>Bu sahada doğrulanmış karşılaşma bulunamadı.</small>')+'</div>';
 const homeAttack=avg(a,'scored'),awayConcede=avg(b,'conceded'),awayAttack=avg(b,'scored'),homeConcede=avg(a,'conceded');
