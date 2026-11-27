@@ -152,9 +152,16 @@ const h2hHalfBonus=generalH2hHalf.bonus+venueH2hHalf.bonus;
 const formatBonus=bonus=>'+'+bonus.toFixed(2).replace('.',',');
 const halfOverPanel=overIndicatorPanel('İY 0,5 Üst',halfIndicator===null?null:halfIndicator+h2hHalfBonus,1.5)+
  metric('İkili rekabet katkısı',formatBonus(h2hHalfBonus));
-const h2hHalfRow=(stats,requiredGames)=>metric('İY 0,5 Üst',stats.verified?
- stats.over+'/'+stats.verified+' · '+stats.verified+'/'+requiredGames+' devre skoru doğrulandı · '+formatBonus(stats.bonus):
- 'Devre skoru doğrulanamadı');
+const h2hHalfRow=(stats,requiredGames)=>{
+ const label='İY 0,5 Üst';
+ if(!stats.verified) return metric(label,'Devre skoru doğrulanamadı');
+ const detail=stats.over+'/'+stats.verified+' · '+stats.verified+'/'+requiredGames+
+  ' devre skoru doğrulandı · '+formatBonus(stats.bonus);
+ if(stats.verified!==requiredGames) return metric(label,detail);
+ const background=stats.bonus>0?'#75e8a6':'#ff858e';
+ return '<div class="metric" style="background:'+background+
+  ';color:#102026;border-radius:5px;padding:5px 8px"><span>'+label+'</span><b>'+detail+'</b></div>';
+};
 const fullOverBonus=latestH2h.count===10&&latestH2h.over25>=7?0.5:0;
 const fullOverIndicator=fullLambda===null?null:fullLambda+fullOverBonus;
 const fullOverPanel=overIndicatorPanel('90 dk 2,5 Üst',fullOverIndicator,3.5);
