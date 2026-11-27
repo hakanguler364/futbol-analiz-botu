@@ -66,7 +66,7 @@ class AccessHandler:
         if method == "POST" and self.headers.get("X-Futbol-Request") != "1":
             self.send({"error": "Geçersiz istek"}, 403)
             return True
-        if method == "POST" and path in ("/auth/login", "/auth/register", "/auth/logout", "/auth/access"):
+        if method == "POST" and path in ("/auth/login", "/auth/register", "/auth/logout", "/auth/access", "/auth/recover"):
             self.membership_action(path)
             return True
         with closing(membership.connect(self.membership_path)) as db:
@@ -154,6 +154,16 @@ class AccessHandler:
                     self.change_access(db, data)
                     return
                 membership.limit_attempts(db)
+                if path == "/auth/recover":
+                    membership.recover_admin_password(
+                        db, data.get("phone"), data.get("code"), data.get("password"),
+                        admin_phone=os.environ.get("MEMBERSHIP_ADMIN_PHONE", ""),
+                        recovery_code=os.environ.get("MEMBERSHIP_ADMIN_RECOVERY_CODE", ""),
+                    )
+                    db.commit()
+                    self.send({"message": "Şifre değiştirildi. Yeni şifrenle giriş yapabilirsin."},
+                              cookie=self.session_cookie())
+                    return
                 if path == "/auth/register":
                     membership.create_member(db, data.get("phone"), data.get("password"), pending=True,
                                              display_name=data.get("display_name"))
