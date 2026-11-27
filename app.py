@@ -557,9 +557,16 @@ def recent(team_id):
     return sorted(data.get("matches", []),
                   key=lambda x: x.get("utcDate", ""), reverse=True)
 
-def stats(games, team_id):
+def stats(games, team_id, *, before):
+    cutoff = datetime.datetime.fromisoformat(before.replace("Z", "+00:00"))
     result = []
     for match in games:
+        try:
+            played = datetime.datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
+            if played >= cutoff:
+                continue
+        except (KeyError, AttributeError, TypeError, ValueError):
+            continue
         home = match.get("homeTeam", {}).get("id") == team_id
         score = match.get("score", {})
         full = score.get("fullTime") or {}
@@ -1114,7 +1121,7 @@ def analyze(match):
                         errors.append(f"{key} SportsDB: {exc}")
                         value = None
             elif team.get("id") is not None:
-                value = stats(recent(team["id"]), team["id"])
+                value = stats(recent(team["id"]), team["id"], before=match["utcDate"])
             else:
                 egypt_fallback = (match.get("competition", {}).get("name") == "Egyptian Second Division A"
                                   and str(match.get("utcDate") or "")[:10] == "2026-11-19")
