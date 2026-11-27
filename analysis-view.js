@@ -297,9 +297,10 @@ const optionRow=(market,label,score,extraRisk=false,archiveOption=true)=>{
  if(points===null)return '';
  const green=points>=80&&!extraRisk;
  if(archiveOption&&archive&&market&&green&&points>80&&!showMissingDataRibbon)archive[market]=points;
- const background=green?'#75e8a6':'#ff858e';
+ const background=green?'#75e8a6':'#000';
+ const foreground=green?'#101826':'#fff';
  const status=points+' puan'+(extraRisk?' · Riskli':'');
- return '<div style="margin:3px 0;padding:3px 7px;border-radius:5px;background:'+background+';color:#101826"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span>'+label+'</span><b style="text-align:right">'+status+'</b></div></div>';
+ return '<div style="margin:3px 0;padding:3px 7px;border-radius:5px;background:'+background+';color:'+foreground+'"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span>'+label+'</span><b style="text-align:right">'+status+'</b></div></div>';
 };
 if(msLeader&&!limitedMsData)optionRow(msLeader[0],msLeader[0],msLeader[1],Boolean(msClose||goalConflict));
 const recommendedStatus=safest?optionRow(safest[0],'⚽ '+safest[0],safest[1],Boolean(riskFlag&&safest[0]==='İY 0,5 Üst')):'';
@@ -318,8 +319,10 @@ const systemTeams=esc(r.home)+' - '+esc(r.away);
 const systemMsCards=[['MS 1',msResult.ms1],['MS 0',msResult.ms0],['MS 2',msResult.ms2]]
  .filter(([,score])=>msReady&&Number.isFinite(score)).map(([label,score])=>{
  const risky=msLeader?.[0]===label&&Boolean(msClose||goalConflict);
- const background=score>=80&&!risky?'#75e8a6':'#ff858e';
- return '<div style="padding:4px;text-align:center;border-radius:5px;background:'+background+';color:#101826"><div>'+label+'</div><strong>'+score+'</strong>'+(risky?'<small style="display:block;color:inherit">Riskli</small>':'')+'</div>';
+ const green=score>=80&&!risky;
+ const background=green?'#75e8a6':'#000';
+ const foreground=green?'#101826':'#fff';
+ return '<div style="padding:4px;text-align:center;border-radius:5px;background:'+background+';color:'+foreground+'"><div>'+label+'</div><strong>'+score+'</strong>'+(risky?'<small style="display:block;color:inherit">Riskli</small>':'')+'</div>';
 }).join('');
 const missingDataRibbon=showMissingDataRibbon?'<div class="missing-data-ribbon" aria-hidden="true">EKSİK VERİ</div>':'';
 const systemPanel=!(recommendedStatus||extraFullStatus||over25Status||half05Status||championsStatus||systemMsCards)?'':'<div class="panel full system-panel'+(showMissingDataRibbon?' has-missing-data':'')+'" style="border-width:1px;padding:7px"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🎯 Sistem Önerisi</span>' +'</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4>'+recommendedStatus+extraFullStatus+over25Status+half05Status+championsStatus+'<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:5px">'+systemMsCards+'</div></div><small>Yeşil: ilgili tahminin verisi yeterli, model puanı 80 veya üzeri ve risk kontrolü uygun. Eksik Veri uyarısı maçın diğer analizlerini de kapsar. Model puanı başarı garantisi değildir.</small>'+goalConflictWarning+missingDataRibbon+'</div>';
