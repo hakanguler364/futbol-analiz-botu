@@ -349,6 +349,10 @@ async function loadTeamInfo(m){
    throw error;
   }));
   if(!node.isConnected)return;
+  for(const rankLabel of node.closest('.match').querySelectorAll('[data-league-rank]')){
+   const rank=d[rankLabel.dataset.leagueRank+'_rank'];
+   rankLabel.textContent=Number.isInteger(rank)&&rank>0?rank+'. ':'';
+  }
   node.innerHTML=[[m.homeTeam?.name,d.home_rank],[m.awayTeam?.name,d.away_rank]]
    .filter(([,rank])=>Number.isInteger(rank)&&rank>0)
    .map(([name,rank])=>'<span>'+esc(name)+': <b>'+rank+'. sıra</b></span>').join('');
