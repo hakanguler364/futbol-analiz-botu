@@ -104,13 +104,29 @@ const goalsPanel='<div class="panel"><h3>⚽ Gol İstatistikleri (Genel)</h3><ta
 const venueSummary=(s,venue)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue).slice(0,5);return g.length?g.filter(x=>x.scored>x.conceded).length+'G '+g.filter(x=>x.scored===x.conceded).length+'B '+g.filter(x=>x.scored<x.conceded).length+'M':'';};
 const venuePerformance=(s,venue)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue&&Number.isFinite(x.scored)&&Number.isFinite(x.conceded)).slice(0,5);if(g.length<5)return '';const wins=g.filter(x=>x.scored>x.conceded).length,losses=g.filter(x=>x.scored<x.conceded).length,draws=g.filter(x=>x.scored===x.conceded).length;if(draws>=3)return '<span class="muted">Performansı dengeli (beraberlik ağırlıklı)</span>';return wins>=3&&wins>losses?'<span class="score-green">Performansı yüksek</span>':losses>=3&&losses>wins?'<span class="score-red">Performansı düşük</span>':'<span class="muted">Performansı dengeli</span>';};
 const avgPanel='<div class="panel"><h3>🏠 Kendi Sahası / Deplasman (Son 5)</h3>'+metric('<span class="team-name-home">'+esc(r.home)+'</span> (Ev)',venueSummary(a,'home')+' · '+venuePerformance(a,'home'))+metric('<span class="team-name-away">'+esc(r.away)+'</span> (Dep)',venueSummary(b,'away')+' · '+venuePerformance(b,'away'))+'</div>';
-const drawRate=h?.count?Math.round(100*h.draws/h.count):null;
-const drawAlert=h?.count>=5&&drawRate!==null&&drawRate>=50;
-const h2hNotice=h?.count>=5?'':('<div class="data-warning '+(h?.count<5?'red':'amber')+'">⚠️ '+(h?.count<5?'DİKKAT! YETERSİZ İKİLİ REKABET VERİSİ':'SINIRLI İKİLİ REKABET VERİSİ')+' <span>Bulunan: '+(h?.count||0)+' maç · Eksik karşılaşmalar olabilir</span></div>');
+const recentH2hGames=(h?.games||[]).filter(game=>
+ /^\d{4}-\d{2}-\d{2}$/.test(game.date)&&goalCountValid(game.home_goals)&&goalCountValid(game.away_goals)
+).sort((left,right)=>right.date.localeCompare(left.date)).slice(0,10);
+const countH2h=predicate=>recentH2hGames.filter(predicate).length;
+const latestH2h={
+ count:recentH2hGames.length,
+ home_wins:countH2h(game=>game.home_goals>game.away_goals),
+ away_wins:countH2h(game=>game.away_goals>game.home_goals),
+ draws:countH2h(game=>game.home_goals===game.away_goals),
+ under25:countH2h(game=>game.home_goals+game.away_goals<3),
+ kg_var:countH2h(game=>game.home_goals>0&&game.away_goals>0)
+};
+latestH2h.over25=latestH2h.count-latestH2h.under25;
+latestH2h.kg_yok=latestH2h.count-latestH2h.kg_var;
+const drawRate=latestH2h.count?Math.round(100*latestH2h.draws/latestH2h.count):null;
+const drawAlert=latestH2h.count>=5&&drawRate>=50;
+const h2hNotice=latestH2h.count<10
+ ?'<div class="data-warning amber">⚠️ Kendi aralarında oynadığı doğrulanmış maç sayısı yetersiz. <span>'+latestH2h.count+'/10 maç</span></div>'
+ :'';
 const rivalryLabel=(x)=>{if(!x?.count)return '';const w=Number(x.home_wins)||0,d=Number(x.draws)||0,l=Number(x.away_wins)||0;if(d>=Math.ceil(x.count*.5)||Math.abs(w-l)<=1)return 'İkili rekabet dengeli';return w>l?'Ev sahibi galibiyet üstünlüğü':'Deplasman galibiyet üstünlüğü';};
 const rivalryTag=(x)=>!x?.count?'':'<div class="metric"><span>📈 Galibiyet performansı</span><b>'+rivalryLabel(x)+'</b></div>';
 const rivalryRecent=(games,venueOnly=false)=>{const sorted=(Array.isArray(games)?games:[]).filter(g=>g&&/^\\d{4}-\\d{2}-\\d{2}/.test(String(g.date||''))&&['home','away','draw'].includes(g.winner)&&(!venueOnly||g.at_home===true)).sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);if(!sorted.length)return '';const hw=sorted.filter(g=>g.winner==='home').length,aw=sorted.filter(g=>g.winner==='away').length,d=sorted.length-hw-aw;const label=d>=3||hw===aw?'Dengeli':hw>aw?'Ev sahibi üstün':'Deplasman üstün';const first=sorted[0].winner;let streak=0;if(first!=='draw'){for(const g of sorted){if(g.winner!==first)break;streak++;}}return '<div class="metric"><span>Son '+sorted.length+' ikili maç</span><b>'+hw+'G Ev · '+d+'B · '+aw+'G Dep — '+label+'</b></div>'+(streak>=2?'<div class="metric"><span>🔥 Güncel galibiyet serisi</span><b>'+(first==='home'?'Ev sahibi':'Deplasman')+' üst üste '+streak+' galibiyet</b></div>':'<div class="metric"><span>Güncel galibiyet serisi</span><b>Yok</b></div>');};
-const h2hPanel='<div class="panel"><h3>🤝 Kendi Aralarındaki Tüm Doğrulanmış Maçlar</h3>'+h2hNotice+(h?.count?'<div class="metric"><span class="team-name-home">'+esc(r.home)+': <b>'+h.home_wins+'</b></span><span>Beraberlik: <b>'+h.draws+'</b></span><span class="team-name-away">'+esc(r.away)+': <b>'+h.away_wins+'</b></span></div><div class="metric"><span>🤝 Beraberlik oranı</span><b>%'+drawRate+' ('+h.draws+'/'+h.count+')</b></div>'+(h.under25!==undefined?'<div class="metric"><span>⚽ 2,5 Alt</span><b>'+h.under25+'/'+h.count+' — %'+Math.round(100*h.under25/h.count)+'</b></div><div class="metric"><span>2,5 Üst</span><b>'+h.over25+'/'+h.count+'</b></div><div class="metric"><span>KG Var / Yok</span><b>'+h.kg_var+' / '+h.kg_yok+'</b></div>':'')+(drawAlert?'<div class="recommend">⚠️ Beraberlik eğilimi yüksek — dikkat!</div>':'')+(h.under25!==undefined&&h.count>=5&&h.under25/h.count>=0.8?'<div class="recommend">⚠️ 2,5 Alt eğilimi yüksek — geçmiş sonuçlara dayalı uyarı.</div>':'')+rivalryTag(h)+rivalryRecent(h.games)+'<small>'+h.count+' doğrulanmış geçmiş karşılaşma. Eksik maçlar tahmin edilmez. Geçmiş oranlar tahmin garantisi değildir.</small>':'<small>Doğrulanmış geçmiş eşleşme bulunamadı.</small>')+'</div>';
+const h2hPanel='<div class="panel"><h3>🤝 Kendi Aralarındaki Son 10 Doğrulanmış Maç</h3>' +(latestH2h.count?'<div class="metric"><span class="team-name-home">'+esc(r.home)+': <b>'+latestH2h.home_wins+'</b></span><span>Beraberlik: <b>'+latestH2h.draws+'</b></span><span class="team-name-away">'+esc(r.away)+': <b>'+latestH2h.away_wins+'</b></span></div><div class="metric"><span>🤝 Beraberlik oranı</span><b>%'+drawRate+' ('+latestH2h.draws+'/'+latestH2h.count+')</b></div>'+(latestH2h.under25!==undefined?'<div class="metric"><span>⚽ 2,5 Alt</span><b>'+latestH2h.under25+'/'+latestH2h.count+' — %'+Math.round(100*latestH2h.under25/latestH2h.count)+'</b></div><div class="metric"><span>2,5 Üst</span><b>'+latestH2h.over25+'/'+latestH2h.count+'</b></div><div class="metric"><span>KG Var / Yok</span><b>'+latestH2h.kg_var+' / '+latestH2h.kg_yok+'</b></div>':'')+(drawAlert?'<div class="recommend">⚠️ Beraberlik eğilimi yüksek — dikkat!</div>':'')+(latestH2h.under25!==undefined&&latestH2h.count>=5&&latestH2h.under25/latestH2h.count>=0.8?'<div class="recommend">⚠️ 2,5 Alt eğilimi yüksek — geçmiş sonuçlara dayalı uyarı.</div>':'')+rivalryTag(latestH2h)+'<small>'+latestH2h.count+' doğrulanmış geçmiş karşılaşma. Eksik maçlar tahmin edilmez. Geçmiş oranlar tahmin garantisi değildir.</small>':'<small>Doğrulanmış geçmiş eşleşme bulunamadı.</small>')+h2hNotice+'</div>';
 const venueH=h?.venue_last5;
 const venueHPanel='<div class="panel"><h3>🏟 Kendi Aralarında Ev Sahibinin Sahasında (Son 5)</h3>'+(venueH?.count<5?'<div class="data-warning '+(venueH?.count<3?'red':'amber')+'">⚠️ SINIRLI İÇ SAHA REKABET VERİSİ <span>Bulunan: '+(venueH?.count||0)+' / 5 maç</span></div>':'')+(venueH?.count?
 metric(esc(r.home)+' galibiyet',venueH.home_wins)+metric('Beraberlik',venueH.draws)+metric(esc(r.away)+' galibiyet',venueH.away_wins)+rivalryTag(venueH)+rivalryRecent(h?.games,true)+
@@ -337,7 +353,7 @@ if(enabled===null){
   '<details style="margin-top:8px"><summary>Dört kriterin dayanağı</summary>'+
   privateDefense+privateForm+privateRivalry+'</details></div>';
 }
-const panels={system:systemPanel,goals:valid(a)||valid(b)?goalsPanel:'',averages:counts.home||counts.away?avgPanel:'',h2h:h?.count?h2hPanel:"",venue:venueH?.count?venueHPanel:"",halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult,privateAwayForm,privateTrial)};
+const panels={system:systemPanel,goals:valid(a)||valid(b)?goalsPanel:'',averages:counts.home||counts.away?avgPanel:'',h2h:h2hPanel,venue:venueH?.count?venueHPanel:"",halftime:halfMini,comparison:comparePanel,result:matchResultPanel(msResult,privateAwayForm,privateTrial)};
 const hasAnalysisData=[scores.ms1, scores.over15, scores.half05, scores.half15].some(Number.isFinite);
 const all=enabled===null;
 if(!all){
