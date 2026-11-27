@@ -98,12 +98,13 @@ const avg=(s,field)=>valid(s)?(s[field]/s.count):null;
 const fmtAvg=v=>v===null?'':v.toFixed(2).replace('.',',');
 const goalValueColor=v=>v===null?'':v>1?'score-green':v<1?'score-red':'';
 const rankedTeam=(team,side)=>'<span data-league-rank="'+side+'"></span>'+esc(team);
+const goalTableHeader='<table class="compact-table"><tr><th>Takım</th><th>Oynanan maç</th><th>Attı</th><th>Yedi</th><th>Ort. Attı</th><th>Ort. Yedi</th></tr>';
 const halfRows=[[r.home,'home','İç saha',homeHalf],[r.away,'away','Deplasman',awayHalf]]
  .filter(([,side])=>counts[side]>0).map(([team,side,venue,games])=>{
   const scored=games.reduce((sum,game)=>sum+game.first_half_scored,0);
   const conceded=games.reduce((sum,game)=>sum+game.first_half_conceded,0);
   return '<tr><td><b class="team-name-'+side+'">'+rankedTeam(team,side)+'</b><br><small>'+venue+'</small></td>'+
-   '<td>'+counts[side]+'</td><td>'+games.length+'</td>'+(games.length?
+   '<td>'+counts[side]+'<br><small>İY skoru: '+games.length+'</small></td>'+(games.length?
    '<td class="'+goalValueColor(scored/games.length)+'">'+scored+'</td>'+
    '<td class="'+goalValueColor(conceded/games.length)+'">'+conceded+'</td><td>'+fmtAvg(scored/games.length)+'</td><td>'+fmtAvg(conceded/games.length)+'</td>'
    :'<td colspan="4"></td>')+'</tr>';
@@ -113,9 +114,9 @@ const halfMatchDetails=[[r.home,homeHalf],[r.away,awayHalf]].filter(([,games])=>
   '<div class="half-detail-row"><span>'+esc(game.date||'')+' · '+esc(game.opponent||'')+'</span><b>'+
   game.first_half_scored+'–'+game.first_half_conceded+'</b></div>').join('')).join('');
 const halfMini=halfRows?'<div class="panel half-mini-panel"><h3>⏱ İlk Yarı Gol Analizi</h3>'+
- '<table class="compact-table"><tr><th>Takım</th><th>Oynanan maç</th><th>İY skoru doğrulanan</th><th>Attı</th><th>Yedi</th><th>Ort. Attı</th><th>Ort. Yedi</th></tr>'+
+ goalTableHeader+
  halfRows+'</table>'+(halfMatchDetails?'<details class="half-detail"><summary>Maçları gör</summary>'+halfMatchDetails+'</details>':'')+'</div>':'';
-const goalsPanel='<div class="panel"><h3>⚽ Gol İstatistikleri (Genel)</h3><table class="compact-table"><tr><th>Takım</th><th>Attı</th><th>Yedi</th><th>Ort. Attı</th><th>Ort. Yedi</th></tr>'+[[r.home,a],[r.away,b]].map(([n,x])=>'<tr><td><b class="team-name-'+(n===r.home?'home':'away')+'">'+rankedTeam(n,n===r.home?'home':'away')+'</b></td><td class="'+goalValueColor(avg(x,'scored'))+'">'+(valid(x)?x.scored:'—')+'</td><td class="'+goalValueColor(avg(x,'conceded'))+'">'+(valid(x)?x.conceded:'—')+'</td><td>'+fmtAvg(avg(x,'scored'))+'</td><td>'+fmtAvg(avg(x,'conceded'))+'</td></tr>').join('')+'</table><small>Veri kapsamı: '+(a?.count??0)+' / '+(b?.count??0)+' maç</small></div>';
+const goalsPanel='<div class="panel"><h3>⚽ Gol İstatistikleri (Genel)</h3>'+goalTableHeader+[[r.home,a],[r.away,b]].map(([n,x])=>'<tr><td><b class="team-name-'+(n===r.home?'home':'away')+'">'+rankedTeam(n,n===r.home?'home':'away')+'</b></td><td>'+(x?.count??'')+'</td><td class="'+goalValueColor(avg(x,'scored'))+'">'+(valid(x)?x.scored:'—')+'</td><td class="'+goalValueColor(avg(x,'conceded'))+'">'+(valid(x)?x.conceded:'—')+'</td><td>'+fmtAvg(avg(x,'scored'))+'</td><td>'+fmtAvg(avg(x,'conceded'))+'</td></tr>').join('')+'</table></div>';
 const venueSummary=(s,venue)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue).slice(0,5);return g.length?g.filter(x=>x.scored>x.conceded).length+'G '+g.filter(x=>x.scored===x.conceded).length+'B '+g.filter(x=>x.scored<x.conceded).length+'M':'';};
 const venuePerformance=(s,venue)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue&&Number.isFinite(x.scored)&&Number.isFinite(x.conceded)).slice(0,5);if(g.length<5)return '';const wins=g.filter(x=>x.scored>x.conceded).length,losses=g.filter(x=>x.scored<x.conceded).length,draws=g.filter(x=>x.scored===x.conceded).length;if(draws>=3)return '<span class="muted">Performansı dengeli (beraberlik ağırlıklı)</span>';return wins>=3&&wins>losses?'<span class="score-green">Performansı yüksek</span>':losses>=3&&losses>wins?'<span class="score-red">Performansı düşük</span>':'<span class="muted">Performansı dengeli</span>';};
 const avgPanel='<div class="panel"><h3>🏠 Kendi Sahası / Deplasman (Son 5)</h3>'+metric('<span class="team-name-home">'+esc(r.home)+'</span> (Ev)',venueSummary(a,'home')+' · '+venuePerformance(a,'home'))+metric('<span class="team-name-away">'+esc(r.away)+'</span> (Dep)',venueSummary(b,'away')+' · '+venuePerformance(b,'away'))+'</div>';
