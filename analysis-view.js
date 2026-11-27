@@ -158,9 +158,9 @@ const h2hHalfRow=(stats,requiredGames)=>{
  const detail=stats.over+'/'+stats.verified+' · '+stats.verified+'/'+requiredGames+
   ' devre skoru doğrulandı · '+formatBonus(stats.bonus);
  if(stats.verified!==requiredGames) return metric(label,detail);
- const background=stats.bonus>0?'#75e8a6':'#ff858e';
- return '<div class="metric" style="background:'+background+
-  ';color:#102026;border-radius:5px;padding:5px 8px"><span>'+label+'</span><b>'+detail+'</b></div>';
+ const colors=stats.bonus>0?'background:#75e8a6;color:#102026':'background:#000;color:#fff';
+ return '<div class="metric" style="'+colors+
+  ';border-radius:5px;padding:5px 8px"><span>'+label+'</span><b>'+detail+'</b></div>';
 };
 const fullOverBonus=latestH2h.count===10&&latestH2h.over25>=7?0.5:0;
 const fullOverIndicator=fullLambda===null?null:fullLambda+fullOverBonus;
