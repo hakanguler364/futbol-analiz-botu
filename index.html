@@ -441,7 +441,7 @@ const analysisContent=match=>{
  const view=results[match.id];
  if(!view)return 'Analiz bekleniyor…';
  if(view.error)return 'Analiz yüklenemedi.';
- if(!view.hasAnalysisData||view.missingData)return 'Eksik veri · Tahmin için yeterli veri yok.';
+ if(!view.hasAnalysisData||view.missingData)return 'Eksik veri · Tahmin için yeterli veri yok.'+(renderedAnalyses[match.id]??'');
  return renderedAnalyses[match.id]??'';
 };
 el('predictionSummary').textContent=filtered.length+' maç gösteriliyor · '+selectedMatches().length+' maç bulundu';
@@ -662,7 +662,14 @@ async function analyze(match, date, current){
     .map(key=>predictionLabels[key]);
    dataCounts[id]={...view.counts,venueH2h:response.sections?.head_to_head_last10?.venue_last5?.count??0,missingScores};
   }
-  if(!view.hasAnalysisData)return;
+  if(view.missingData||!view.hasAnalysisData){
+   if(response.sections){
+    const statsPanels=['goals','averages','h2h','venue','halftime','comparison'].filter(canViewPanel);
+    const stats=analysisView(response,statsPanels,null,match).html;
+    if(stats)renderedAnalyses[id]='<div class="analysis-grid">'+stats+'</div>';
+   }
+   return;
+  }
   predictionScores[id]=view.scores;
   renderedAnalyses[id]=view.html?'<div class="analysis-grid">'+view.html+'</div>':'Bu hesap için açık analiz paneli yok.';
   refreshRecommendationsAfterAnalysis();
