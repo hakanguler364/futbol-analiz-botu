@@ -220,6 +220,12 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 .system-panel .ms-score-item{background:#000;gap:2px;padding:4px 2px;border-radius:5px}
 .system-panel .ms-score-item b,.system-panel .ms-score-item strong{font-size:.8rem}
 .analysis-grid .system-panel .ms-score-item small{font-size:.68rem}
+
+.match-notice{margin-top:10px;padding:5px 8px;overflow:hidden;border-radius:6px;background:#ff5959;color:#000;font-size:12px;font-weight:750}
+.match-notice span{position:relative;display:inline-block;max-width:100%;animation:match-notice-scroll 4s ease-in-out infinite alternate}
+.match-notice:hover span{animation-play-state:paused}
+@keyframes match-notice-scroll{from{left:0;transform:translateX(0)}to{left:100%;transform:translateX(-100%)}}
+@media(prefers-reduced-motion:reduce){.match-notice span{animation:none}}
 </style>
 </head>
 <body>
@@ -460,6 +466,7 @@ ${canViewPanel('teams')?'<div id="team-info-'+esc(m.id)+'" class="team-info-box"
 
 <div id="data-warning-${esc(m.id)}">${dataWarning(m.id)}</div><div id="prediction-${esc(m.id)}">${results[m.id]?.missingData?'':predictionChips(predictionScores[m.id],results[m.id]?.marketReady)}</div>
 <div class="muted">${canViewPanel('odds')?'<div id="odds-'+esc(m.id)+'">'+bettingOddsPanel(m)+'</div>':''}${analysisContent(m)}</div>
+<div class="match-notice"><span>sadece yeşil sonuçları değerlendirin</span></div>
 </div>
 `).join('')||(games.length?'<p>Analiz verisi doğrulanmış ve filtreye uyan maç henüz bulunamadı.</p>':'<p>Seçilen tarihte veri kaynağından maç alınamadı.</p>');
 if(canViewPanel('teams'))filtered.forEach(m=>loadTeamInfo(m));
