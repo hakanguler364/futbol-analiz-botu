@@ -79,9 +79,6 @@ const metric=(label,value)=>'<div class="metric"><span>'+label+'</span><b>'+valu
 const bar=(label,p)=>{if(p===null)return '';const v=Math.max(0,Math.min(99,Math.round(p)));return '<div class="metric"><span>'+label+'</span><b class="'+scoreClass(v)+'">'+v+' puan</b></div><div class="bar-track"><div class="bar-fill" style="width:'+v+'%;background:'+color(v)+'"></div></div>';};
 const valid=s=>s&&s.data_scope!=='season'&&Number.isFinite(s.count)&&s.count>0;
 const pct=(s,venue,field)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue&&Number.isFinite(x[field]));return g.length?Math.round(100*g.filter(x=>x[field]>0).length/g.length):null;};
-const halfCard=(s,venue,field,label)=>{const all=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue);const g=all.filter(x=>Number.isFinite(x.first_half_scored)&&Number.isFinite(x.first_half_conceded));if(!g.length)return '';const hits=g.filter(x=>x[field]>0).length,total=g.reduce((n,x)=>n+x[field],0),p=g.length?Math.round(100*hits/g.length):null;const rows=all.map(x=>'<div class="half-detail-row"><span>'+esc(x.date||'?')+' · '+esc(x.opponent||'?')+'</span><b>'+(Number.isFinite(x.first_half_scored)&&Number.isFinite(x.first_half_conceded)?x.first_half_scored+'-'+x.first_half_conceded:'Skor yok')+'</b></div>').join('');return '<div class="half-mini"><div>'+label+'</div><strong style="color:'+(p===null?'#9aadc4':p>=75?'#4bea8e':'#ffcf56')+'">'+('%'+p)+'</strong><small>'+(p===null?'İlk yarı skoru bulunamadı':hits+'/'+g.length+' maç · '+total+' gol')+'</small><details class="half-detail"><summary>Maçları gör</summary>'+(rows||'<small>Geçmiş maç bulunamadı</small>')+'<small>Skorlar takım açısından: attığı-yediği. Yalnız doğrulanmış ilk yarılar hesaplanır.</small></details></div>';};
-const halfCards=halfCard(a,'home','first_half_scored','Ev · Atma')+halfCard(b,'away','first_half_scored','Dep · Atma')+halfCard(a,'home','first_half_conceded','Ev · Yeme')+halfCard(b,'away','first_half_conceded','Dep · Yeme');
-const halfMini=halfCards?'<div class="panel half-mini-panel"><h3>⏱ İlk Yarı Gol Analizi</h3><div class="half-mini-grid">'+halfCards+'</div><small>Ev: yalnız iç saha · Dep: yalnız dış saha · %75+ yeşil</small></div>':'';
 const goalCountValid=value=>Number.isInteger(value)&&value>=0;
 const verifiedVenueGames=(section,venue,scored,conceded)=>
  (section?.venue_games||section?.games||[]).filter(game=>
@@ -100,6 +97,17 @@ const fullLambda=fullDataReady(a,fullCounts[0])&&fullDataReady(b,fullCounts[1])?
 const avg=(s,field)=>valid(s)?(s[field]/s.count):null;
 const fmtAvg=v=>v===null?'':v.toFixed(2).replace('.',',');
 const goalValueColor=v=>v===null?'':v>1?'score-green':v<1?'score-red':'';
+const halfRows=[[r.home,'home','İç saha',homeHalf],[r.away,'away','Deplasman',awayHalf]]
+ .filter(([, , ,games])=>games.length).map(([team,side,venue,games])=>{
+  const scored=games.reduce((sum,game)=>sum+game.first_half_scored,0);
+  const conceded=games.reduce((sum,game)=>sum+game.first_half_conceded,0);
+  return '<tr><td><b class="team-name-'+side+'">'+esc(team)+'</b><br><small>'+venue+'</small></td>'+
+   '<td>'+games.length+'</td><td>'+scored+'</td><td>'+conceded+'</td>'+
+   '<td>'+fmtAvg(scored/games.length)+'</td><td>'+fmtAvg(conceded/games.length)+'</td></tr>';
+ }).join('');
+const halfMini=halfRows?'<div class="panel half-mini-panel"><h3>⏱ İlk Yarı Gol Analizi</h3>'+
+ '<table class="compact-table"><tr><th>Takım</th><th>Maç</th><th>Attı</th><th>Yedi</th><th>Ort. Attı</th><th>Ort. Yedi</th></tr>'+
+ halfRows+'</table></div>':'';
 const goalsPanel='<div class="panel"><h3>⚽ Gol İstatistikleri (Genel)</h3><table class="compact-table"><tr><th>Takım</th><th>Attı</th><th>Yedi</th><th>Ort. Attı</th><th>Ort. Yedi</th></tr>'+[[r.home,a],[r.away,b]].map(([n,x])=>'<tr><td><b class="team-name-'+(n===r.home?'home':'away')+'">'+esc(n)+'</b></td><td class="'+goalValueColor(avg(x,'scored'))+'">'+(valid(x)?x.scored:'—')+'</td><td class="'+goalValueColor(avg(x,'conceded'))+'">'+(valid(x)?x.conceded:'—')+'</td><td>'+fmtAvg(avg(x,'scored'))+'</td><td>'+fmtAvg(avg(x,'conceded'))+'</td></tr>').join('')+'</table><small>Veri kapsamı: '+(a?.count??0)+' / '+(b?.count??0)+' maç</small></div>';
 const venueSummary=(s,venue)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue).slice(0,5);return g.length?g.filter(x=>x.scored>x.conceded).length+'G '+g.filter(x=>x.scored===x.conceded).length+'B '+g.filter(x=>x.scored<x.conceded).length+'M':'';};
 const venuePerformance=(s,venue)=>{const g=(s?.venue_games||s?.games||[]).filter(x=>x.venue===venue&&Number.isFinite(x.scored)&&Number.isFinite(x.conceded)).slice(0,5);if(g.length<5)return '';const wins=g.filter(x=>x.scored>x.conceded).length,losses=g.filter(x=>x.scored<x.conceded).length,draws=g.filter(x=>x.scored===x.conceded).length;if(draws>=3)return '<span class="muted">Performansı dengeli (beraberlik ağırlıklı)</span>';return wins>=3&&wins>losses?'<span class="score-green">Performansı yüksek</span>':losses>=3&&losses>wins?'<span class="score-red">Performansı düşük</span>':'<span class="muted">Performansı dengeli</span>';};
