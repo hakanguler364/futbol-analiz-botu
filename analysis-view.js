@@ -113,9 +113,13 @@ const halfMatchDetails=halfTeams.filter(([, , ,games])=>games.length)
    '<strong class="team-name-home">'+esc(home?name:opponent)+'</strong> <b>'+homeGoals+'–'+awayGoals+'</b> '+
    '<strong class="team-name-away">'+esc(home?opponent:name)+'</strong></span></div>';
  }).join('')).join('');
-const overIndicatorPanel=(label,average,threshold)=>average===null?'':
- '<div class="panel" style="background:'+(average>threshold?'#75e8a6':'#ff858e')+
- ';color:#101826"><h3 style="color:inherit">'+label+'</h3></div>';
+const overIndicatorPanel=(label,average,threshold,detail='')=>{
+ if(average===null) return '';
+ const colors=average>threshold?'background:#75e8a6;color:#101826':'background:#000;color:#fff';
+ return '<div class="metric" style="'+colors+
+  ';border-radius:5px;padding:5px 8px;margin:3px 0"><b>'+label+'</b>'+
+  (detail?'<span>'+detail+'</span>':'')+'</div>';
+};
 const halfIndicator=homeHalf.length&&awayHalf.length?(averageHalf(homeHalf)+averageHalf(awayHalf))/2:null;
 const halfMini=(counts.home||counts.away)?'<div class="panel half-mini-panel"><h3>⏱ İlk Yarı Gol Analizi</h3>'+
  goalTableHeader+
@@ -150,8 +154,9 @@ const generalH2hHalf=h2hHalfStats(recentH2hGames,10,7);
 const venueH2hHalf=h2hHalfStats(venueH2hGames,5,4);
 const h2hHalfBonus=generalH2hHalf.bonus+venueH2hHalf.bonus;
 const formatBonus=bonus=>'+'+bonus.toFixed(2).replace('.',',');
-const halfOverPanel=overIndicatorPanel('İY 0,5 Üst',halfIndicator===null?null:halfIndicator+h2hHalfBonus,1.5)+
- metric('İkili rekabet katkısı',formatBonus(h2hHalfBonus));
+const halfBonusLabel='İkili rekabet katkısı';
+const halfOverPanel=halfIndicator===null?metric(halfBonusLabel,formatBonus(h2hHalfBonus)):
+ overIndicatorPanel('İY 0,5 Üst',halfIndicator+h2hHalfBonus,1.5,halfBonusLabel+' '+formatBonus(h2hHalfBonus));
 const h2hHalfRow=(stats,requiredGames)=>{
  const label='İY 0,5 Üst';
  if(!stats.verified) return metric(label,'Devre skoru doğrulanamadı');
@@ -306,7 +311,7 @@ if(msLeader&&!limitedMsData)optionRow(msLeader[0],msLeader[0],msLeader[1],Boolea
 const recommendedStatus=safest?optionRow(safest[0],'⚽ '+safest[0],safest[1],Boolean(riskFlag&&safest[0]==='İY 0,5 Üst')):'';
 const extraFullStatus=!championsRule&&safest?.[0]!=='1,5 Üst'
  ?optionRow(null,'⚽ 90 dk 1,5 Üst',scores.over15,false,false):'';
-const over25Status=optionRow('2,5 Üst','⚽ 2,5 Üst',over25Score);
+const over25Status=optionRow('2,5 Üst','⚽ 90 dk 2,5 Üst',over25Score);
 const championsOption=(market,label,key,risk=false)=>optionRow(market,label,scores[key],risk);
 const half05Status=championsRule
  ?championsOption('İY 0,5 Üst','⏱️ İlk Yarı 0,5 Üst','half05',championsHalfRisk)
