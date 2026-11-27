@@ -758,7 +758,15 @@ def sportsdb_recent(match, side):
                      "champions_league": (event.get("strStatus") or "").strip().casefold() in {"match finished", "ft", "full time"} and
                      (event.get("strLeague") or "").casefold() == "uefa champions league",
                      "venue": "home" if is_home else "away"})
-    rows = list({(r["date"], r["opponent"], r["venue"], r["scored"], r["conceded"]): r for r in rows}.values())
+    unique = {}
+    for row in rows:
+        key = (row["date"], row["opponent"], row["venue"], row["scored"], row["conceded"])
+        unique.setdefault(key, []).append(row)
+    rows = []
+    for duplicates in unique.values():
+        scores = {half for row in duplicates if (half := valid_recent_half(row)) is not None}
+        half = next(iter(scores)) if len(scores) == 1 else (None, None)
+        rows.append(dict(duplicates[0], first_half_scored=half[0], first_half_conceded=half[1]))
     rows.sort(key=lambda row: row["date"], reverse=True)
     venue = "home" if side == "home" else "away"
     venue_games = [r for r in rows if r["venue"] == venue and r["date"] >= season_start(match["utcDate"], match.get("espn_league"))]
@@ -923,6 +931,62 @@ def espn_recent(match, side):
             "first_half_scored": sum(row["first_half_scored"] for row in known_half),
             "first_half_conceded": sum(row["first_half_conceded"] for row in known_half),
             "first_half_count": len(known_half)}
+
+def recent_with_supplement(match, side, primary):
+    """Recover missing venue halftime scores from matching secondary results."""
+    venue_games = (primary or {}).get("venue_games") or []
+    missing = [row for row in venue_games if valid_recent_half(row) is None]
+    if not missing and (primary or {}).get("games"):
+        return primary
+    secondary = sportsdb_recent(match.get("sportsdb_fallback_match") or match, side)
+    if not secondary or not secondary.get("games"):
+        return primary
+    if not (primary or {}).get("games"):
+        return secondary
+
+    def match_key(row):
+        opponent = team_match_key(row.get("opponent"))
+        if not opponent:
+            return None
+        return row["date"], opponent, row["venue"], row["scored"], row["conceded"]
+
+    alternatives = {}
+    for row in secondary.get("venue_games") or []:
+        key, half = match_key(row), valid_recent_half(row)
+        if key is not None and half is not None:
+            alternatives.setdefault(key, set()).add(half)
+    recovered = {}
+    for row in missing:
+        key = match_key(row)
+        scores = alternatives.get(key, set())
+        if len(scores) == 1:
+            recovered[key] = next(iter(scores))
+    if not recovered:
+        return primary
+
+    def enrich(row):
+        if valid_recent_half(row) is not None:
+            return row
+        half = recovered.get(match_key(row))
+        if half is None:
+            return row
+        return dict(row, first_half_scored=half[0], first_half_conceded=half[1])
+
+    enriched_venue = [enrich(row) for row in venue_games]
+    known = [half for row in enriched_venue if (half := valid_recent_half(row)) is not None]
+    return dict(primary, games=[enrich(row) for row in primary["games"]],
+                venue_games=enriched_venue, first_half_count=len(known),
+                first_half_scored=sum(half[0] for half in known),
+                first_half_conceded=sum(half[1] for half in known))
+
+
+def valid_recent_half(row):
+    scored, conceded = row.get("first_half_scored"), row.get("first_half_conceded")
+    if (type(scored) is int and type(conceded) is int and
+            0 <= scored <= row["scored"] and 0 <= conceded <= row["conceded"]):
+        return scored, conceded
+    return None
+
 
 def espn_head_to_head(match):
     league = match.get("espn_league")
@@ -1143,35 +1207,19 @@ def analyze(match):
                         errors.append(f"{key} SportsDB: {exc}")
             elif match.get("source") == "OpenLigaDB":
                 value = openliga_recent(match, "home" if key == "home_last5" else "away")
-            elif match.get("source") == "ESPN":
-                side = "home" if key == "home_last5" else "away"
-                try:
-                    value = espn_recent(match, side)
-                except (OSError, ValueError, TypeError, KeyError) as exc:
-                    errors.append(f"{key} ESPN: {exc}")
-                    value = None
-                if not value or not value.get("games"):
-                    try:
-                        alternative = sportsdb_recent(match.get("sportsdb_fallback_match") or match, side)
-                        if alternative and alternative.get("games"):
-                            value = alternative
-                    except (OSError, ValueError, TypeError, KeyError) as exc:
-                        errors.append(f"{key} SportsDB: {exc}")
-            elif match.get("espn_league"):
+            elif match.get("source") == "ESPN" or match.get("espn_league"):
                 side = "home" if key == "home_last5" else "away"
                 value = soccerway_recent(match, side) if match.get("source") == "Soccerway" else None
-                try:
-                    if not value or not value.get("games"):
-                        value = espn_recent(match, side)
-                except (OSError, ValueError, TypeError, KeyError) as exc:
-                    errors.append(f"{key} ESPN roster: {exc}")
-                    value = None
                 if not value or not value.get("games"):
                     try:
-                        value = sportsdb_recent(match, side)
+                        value = espn_recent(match, side)
                     except (OSError, ValueError, TypeError, KeyError) as exc:
-                        errors.append(f"{key} SportsDB: {exc}")
+                        errors.append(f"{key} ESPN: {exc}")
                         value = None
+                try:
+                    value = recent_with_supplement(match, side, value)
+                except (OSError, ValueError, TypeError, KeyError) as exc:
+                    errors.append(f"{key} SportsDB: {exc}")
             elif team.get("id") is not None:
                 value = stats(recent(team["id"]), team["id"], before=match["utcDate"])
             else:
