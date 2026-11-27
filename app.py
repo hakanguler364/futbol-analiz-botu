@@ -1,5 +1,6 @@
 
 """Football analysis dashboard. Python standard library only."""
+import csv, io
 import os, json, urllib.request, urllib.parse, urllib.error, http.server, datetime, pathlib, re, time
 
 from contextlib import closing
@@ -988,6 +989,127 @@ def valid_recent_half(row):
     return None
 
 
+# open-matchday's 2026/27 public, non-commercial results archive.
+# https://github.com/oladeeayo/open-matchday
+OPEN_MATCHDAY_FOLDERS = {
+    "tur.1": "TUR_1_super-lig", "eng.1": "ENG_1_premier-league",
+    "eng.2": "ENG_2_championship", "eng.3": "ENG_3_league-one", "eng.4": "ENG_4_league-two",
+    "esp.1": "ESP_1_la-liga", "esp.2": "ESP_2_segunda-division",
+    "ger.1": "GER_1_bundesliga", "ger.2": "GER_2_2-bundesliga", "ger.3": "GER_3_3-liga",
+    "ita.1": "ITA_1_serie-a", "ita.2": "ITA_2_serie-b",
+    "fra.1": "FRA_1_ligue-1", "fra.2": "FRA_2_ligue-2",
+    "ned.1": "NED_1_eredivisie", "ned.2": "NED_2_eerste-divisie",
+    "por.1": "POR_1_primeira-liga", "bel.1": "BEL_1_pro-league",
+    "sco.1": "SCO_1_premiership", "gre.1": "GRE_1_super-league",
+    "nor.1": "NOR_1_eliteserien", "aut.1": "AUT_1_bundesliga", "rus.1": "RUS_1_premier-liga",
+    "pol.1": "POL_1_ekstraklasa", "pol.2": "POL_2_division-1", "pol.3": "POL_3_division-2",
+    "arg.2": "ARG_2_primera-nacional", "bra.1": "BRA_1_serie-a", "bra.2": "BRA_2_serie-b",
+    "jpn.1": "JPN_1_j1-league", "aus.1": "AUS_1_a-league", "usa.1": "USA_1_mls",
+}
+
+
+def open_matchday_results(league):
+    folder = OPEN_MATCHDAY_FOLDERS.get(league)
+    if not folder:
+        return ()
+    key = ("open_matchday", league)
+    with MATCH_FETCH_LOCKS.setdefault(key, Lock()):
+        cached = CACHE.get(key)
+        if cached and time.time() - cached["time"] < 3600:
+            return cached["result"]
+        url = f"https://raw.githubusercontent.com/oladeeayo/open-matchday/master/data/{folder}/results_2627.csv"
+        try:
+            with urllib.request.urlopen(url, timeout=6) as response:
+                data = response.read(2_000_000).decode("utf-8-sig")
+            rows = tuple(csv.DictReader(io.StringIO(data)))
+        except (OSError, UnicodeError, csv.Error):
+            if cached and cached["result"]:
+                return cached["result"]
+            rows = ()
+        CACHE[key] = {"time": time.time() if rows else time.time()-3300, "result": rows}
+        return rows
+
+
+def merge_open_matchday_recent(match, side, primary):
+    league = match.get("espn_league")
+    cutoff = str(match.get("utcDate") or "")[:10]
+    if not cutoff or cutoff < "2026-01-01" or cutoff >= "2027-07-01":
+        return primary
+    primary_rows = (primary or {}).get("games") or []
+    venue_rows = [row for row in primary_rows if row["venue"] == side]
+    if len(venue_rows) >= 8 and all(valid_recent_half(row) is not None for row in venue_rows):
+        return primary
+
+    team = team_match_key(match[side + "Team"].get("name", ""))
+    if not team:
+        return primary
+    first_day = season_start(match["utcDate"], league)
+    records = {}
+    for row in open_matchday_results(league):
+        day = row.get("date") or ""
+        if not first_day <= day < cutoff:
+            continue
+        home = team_match_key(row.get("home") or "")
+        away = team_match_key(row.get("away") or "")
+        if not home or not away or home == away or team not in (home, away):
+            continue
+        venue = "home" if team == home else "away"
+        other = "away" if venue == "home" else "home"
+        try:
+            scored, conceded = int(row[f"ft_{venue}"]), int(row[f"ft_{other}"])
+            if min(scored, conceded) < 0:
+                continue
+        except (KeyError, ValueError, TypeError):
+            continue
+        try:
+            hs, hc = int(row[f"ht_{venue}"]), int(row[f"ht_{other}"])
+        except (KeyError, ValueError, TypeError):
+            hs = hc = None
+        opponent = row[other]
+        result = {"date": day, "venue": venue, "opponent": opponent,
+                  "scored": scored, "conceded": conceded,
+                  "first_half_scored": hs, "first_half_conceded": hc}
+        identity = (day, venue, away if venue == "home" else home)
+        records.setdefault(identity, []).append(result)
+
+    def key_for(row):
+        return row["date"], row["venue"], team_match_key(row.get("opponent") or "")
+
+    def full(row):
+        return row["scored"], row["conceded"]
+
+    merged = []
+    changed = False
+    for row in primary_rows:
+        alternatives = records.get(key_for(row), ())
+        halves = {half for alternative in alternatives if full(alternative) == full(row)
+                  and (half := valid_recent_half(alternative)) is not None}
+        if valid_recent_half(row) is None and len(halves) == 1:
+            hs, hc = next(iter(halves))
+            row = dict(row, first_half_scored=hs, first_half_conceded=hc)
+            changed = True
+        merged.append(row)
+
+    # Dates can differ around midnight across feeds. Skip ambiguous additions.
+    for alternatives in records.values():
+        row = alternatives[0]
+        day = datetime.date.fromisoformat(row["date"])
+        if len({full(item) for item in alternatives}) != 1 or any(
+            abs((day - datetime.date.fromisoformat(existing["date"])).days) <= 1
+            for existing in merged
+        ):
+            continue
+        halves = {half for item in alternatives if (half := valid_recent_half(item)) is not None}
+        hs, hc = next(iter(halves)) if len(halves) == 1 else (None, None)
+        merged.append(dict(row, first_half_scored=hs, first_half_conceded=hc))
+        changed = True
+
+    if not changed:
+        return primary
+    return {**(primary or {}), **summarize_team_games(merged, side),
+            "supplemental_source": "open-matchday"}
+
+
 def espn_head_to_head(match):
     league = match.get("espn_league")
     home_id, away_id = match.get("home_espn_id"), match.get("away_espn_id")
@@ -1233,9 +1355,16 @@ def analyze(match):
                 if not value or not value.get("games"):
                     fallback = egypt_season_fallback(team.get("name")) if egypt_fallback else None
                     value = fallback or value
-            return key, value, errors
         except Exception as exc:
-            return key, None, errors + [f"{key}: {exc}"]
+            value = None
+            errors.append(f"{key}: {exc}")
+        if key != "head_to_head_last10":
+            side = "home" if key == "home_last5" else "away"
+            try:
+                value = merge_open_matchday_recent(match, side, value)
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                errors.append(f"{key} open-matchday: {exc}")
+        return key, value, errors
 
     jobs = (("home_last5", home), ("away_last5", away), ("head_to_head_last10", None))
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:

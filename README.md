@@ -62,3 +62,7 @@ Ziyaretçi giriş ekranından üyelik başvurusu yapar. Yönetici giriş yaptık
 sonra **Üyeleri yönet** ekranından başvuruyu onaylar, erişimi açar veya
 engeller. Engelleme mevcut oturumları da kapatır. Üyelik açıkken maç,
 analiz ve Telegram uçları geçerli oturum ister.
+
+### Ek geçmiş maç verisi
+
+[open-matchday](https://github.com/oladeeayo/open-matchday) 2026/27 sonuçları, kapsanan liglerde geçmiş maç ve doğrulanabilir devre skoru yedeği olarak kullanılır. Kaynak, ticari olmayan kullanım içindir.
