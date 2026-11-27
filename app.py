@@ -1172,31 +1172,37 @@ def espn_head_to_head(match):
     if not league or not home_id or not away_id:
         return None
     kickoff = datetime.datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
-    url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/" +
-           urllib.parse.quote(str(league), safe="") + "/teams/" +
-           urllib.parse.quote(str(home_id), safe="") + "/schedule?limit=300")
-    # ESPN's default schedule often covers only one season. Query earlier
-    # seasons to recover verified head-to-head matches at both venues.
+    team_urls = [
+        "https://site.api.espn.com/apis/site/v2/sports/soccer/" +
+        urllib.parse.quote(str(league), safe="") + "/teams/" +
+        urllib.parse.quote(str(team_id), safe="") + "/schedule?limit=300"
+        for team_id in (home_id, away_id)
+    ]
     events = []
     seen_event_ids = set()
-    # Search BOTH clubs: historical ESPN coverage may differ by team.
-    for query_team_id in (home_id, away_id):
-        team_url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/" +
-                    urllib.parse.quote(str(league), safe="") + "/teams/" +
-                    urllib.parse.quote(str(query_team_id), safe="") + "/schedule?limit=300")
-        for year in range(kickoff.year, kickoff.year - 21, -1):
-            season_url = team_url + "&season=" + str(year)
-            try:
-                data = espn_history_json(season_url, timeout=7)
-                for event in data.get("events") or []:
-                    event_id = event.get("id")
-                    if event_id and event_id in seen_event_ids:
-                        continue
-                    if event_id:
-                        seen_event_ids.add(event_id)
-                    events.append(event)
-            except (OSError, ValueError, TypeError):
+    # Give recent seasons of both teams priority. Leave time for team history,
+    # halftime details and fallback sources before the panel's request expires.
+    deadline = time.monotonic() + 30
+    season_urls = (
+        f"{team_url}&season={year}"
+        for year in range(kickoff.year, kickoff.year - 21, -1)
+        for team_url in team_urls
+    )
+    for season_url in season_urls:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            data = espn_history_json(season_url, timeout=min(7, remaining))
+        except (OSError, ValueError, TypeError):
+            continue
+        for event in data.get("events") or []:
+            event_id = event.get("id")
+            if event_id and event_id in seen_event_ids:
                 continue
+            if event_id:
+                seen_event_ids.add(event_id)
+            events.append(event)
     games = []
     event_ids = {}
     for event in events:
@@ -1413,7 +1419,8 @@ def analyze(match):
             if key == "head_to_head_last10":
                 value = espn_head_to_head(match) if match.get("source") == "ESPN" else sportsdb_head_to_head(match)
                 # Try a second source whenever the general last-10 sample is incomplete.
-                if match.get("source") == "ESPN" and (not value or value.get("count", 0) < 10):
+                if match.get("source") == "ESPN" and (not value or value.get("count", 0) < 10
+                    or (value.get("venue_last5") or {}).get("count", 0) < 5):
                     try:
                         alternative = sportsdb_head_to_head(match.get("sportsdb_fallback_match") or match)
                         if alternative and alternative.get("games"):
