@@ -303,7 +303,7 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 <div class="card">Bulunan maç<div class="num" id="total">—</div></div>
 <div class="card">İşlenen maç<div class="num" id="analyzed">0</div></div>
 <div class="card">Verisi tam<div class="num" id="success">0</div></div>
-<div class="card">Hatalı / eksik<div class="num" id="failed">0</div></div>
+<div class="card"><span id="issueLabel">Eksik / alınamadı</span><div class="num" id="failed">0</div></div>
 </div>
 
 <button onclick="showSelectedMatches()">Seçilen maçları getir</button>
@@ -318,7 +318,7 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 </main>
 
 <script>
-let games=[],done=0,ok=0,bad=0,results={},runId=0,renderedAnalyses={},predictionScores={},dataCounts={};
+let games=[],done=0,ok=0,bad=0,unavailable=0,results={},runId=0,renderedAnalyses={},predictionScores={},dataCounts={};
 const el=id=>document.getElementById(id);
 /* SHARED_ANALYSIS_VIEW */
 const enabledPanels = /* ENABLED_PANELS */ null;
@@ -380,7 +380,8 @@ function update(){
 el('total').textContent=selectedMatches().length;
 el('analyzed').textContent=done;
 el('success').textContent=ok;
-el('failed').textContent=bad;
+el('failed').textContent=bad+unavailable;
+el('issueLabel').textContent=unavailable ? bad+' eksik · '+unavailable+' alınamadı' : 'Eksik veri';
 el('progress').textContent=`${done}/${games.length} maç işlendi`;
 }
 
@@ -710,7 +711,7 @@ async function load(){
  const picker=el('leagueFilter'),old=selectedLeagues();
  el('mode').textContent='Lig seçimi hazır';
  el('matches').textContent='Önce ligi seçin, sonra Seçilen maçları getir düğmesine basın.';
- runId++;games=[];done=ok=bad=0;results={};renderedAnalyses={};predictionScores={};dataCounts={};update();
+ runId++;games=[];done=ok=bad=unavailable=0;results={};renderedAnalyses={};predictionScores={};dataCounts={};update();
  try{
   const available=Array.from(picker.options).map(o=>o.value).filter(Boolean);
   for(const option of picker.options)option.selected=old.includes(option.value);
@@ -727,7 +728,7 @@ async function analyze(match, date, current){
   const response=await api('/api/analyze/'+encodeURIComponent(id)+'?date='+encodeURIComponent(date),{signal:controller.signal});
   if(current!==runId)return;
   const view=response.view||analysisView(response,null,null,match);
-  results[id]=view;
+  results[id]={...view,dataComplete:response.data_complete};
   if(view.counts){
    const missingScores=(view.insufficient||[]).filter(key=>['ms1','ms0','ms2','half05'].includes(key))
     .map(key=>predictionLabels[key]);
@@ -758,7 +759,10 @@ async function analyze(match, date, current){
   clearTimeout(timeout);
   if(current===runId){
    done++;
-   if(results[id]?.hasAnalysisData && !results[id].missingData)ok++;else bad++;
+   const dataComplete=results[id]?.dataComplete;
+   if(dataComplete===true)ok++;
+   else if(dataComplete===false)bad++;
+   else unavailable++;
    recordLeagueHealth(match,results[id]);
    update();
    renderGames();
@@ -780,7 +784,7 @@ finally{if(pendingMatchLoad===request)pendingMatchLoad=undefined;}
 }
 
 async function fetchSelectedMatches(leagues,date){
-const current=++runId;done=ok=bad=0;results={};renderedAnalyses={};predictionScores={};dataCounts={};games=[];update();
+const current=++runId;done=ok=bad=unavailable=0;results={};renderedAnalyses={};predictionScores={};dataCounts={};games=[];update();
 el('total').textContent='—';
 el('progress').textContent='Maçlar yükleniyor…';
 el('matches').textContent='Seçilen liglerin maçları yükleniyor...';
