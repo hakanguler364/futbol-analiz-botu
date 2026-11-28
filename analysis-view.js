@@ -167,11 +167,6 @@ const h2hHalfRow=(stats,requiredGames)=>{
 const fullOverBonus=latestH2h.count===10&&latestH2h.over25>=7?0.5:0;
 const fullOverIndicator=fullLambda===null?null:fullLambda+fullOverBonus;
 const halfOverIndicator=halfIndicator===null?null:halfIndicator+h2hHalfBonus;
-const systemPredictionPanel=(halfMini||halfOverIndicator!==null||fullOverIndicator!==null)
- ?'<section class="panel system-prediction-panel"><h3>Sistem tahmini</h3><div class="system-prediction-items">'+
-  overIndicatorCard('İlk Yarı 0,5 Üst',halfOverIndicator,1.5,(halfOverIndicator===null?'Veri yok · ':'')+halfBonusLabel+' '+formatBonus(h2hHalfBonus))+
-  overIndicatorCard('90 Dakika 2,5 Gol Üst',fullOverIndicator,3.5,fullOverIndicator===null?'Veri yok':'')+
-  '</div></section>':'';
 const drawRate=latestH2h.count?Math.round(100*latestH2h.draws/latestH2h.count):null;
 const drawAlert=latestH2h.count>=5&&drawRate>=50;
 const h2hNotice=latestH2h.count<10
@@ -334,6 +329,30 @@ const systemMsCards=[['MS 1',msResult.ms1],['MS 0',msResult.ms0],['MS 2',msResul
 const missingDataRibbon=showMissingDataRibbon?'<div class="missing-data-ribbon" aria-hidden="true">EKSİK VERİ</div>':'';
 const systemPanel=!(recommendedStatus||extraFullStatus||over25Status||half05Status||championsStatus||systemMsCards)?'':'<div class="panel full system-panel'+(showMissingDataRibbon?' has-missing-data':'')+'" style="border-width:1px;padding:7px"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🎯 Sistem Önerisi</span>' +'</h3><div class="inner"><h4>⚽ '+systemTeams+'</h4>'+recommendedStatus+extraFullStatus+over25Status+half05Status+championsStatus+'<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:5px">'+systemMsCards+'</div></div><small>Yeşil: ilgili tahminin verisi yeterli, model puanı 80 veya üzeri ve risk kontrolü uygun. Eksik Veri uyarısı maçın diğer analizlerini de kapsar. Model puanı başarı garantisi değildir.</small>'+goalConflictWarning+missingDataRibbon+'</div>';
 
+const predictionWarnings=[];
+for(const [name,section,venue,full,half] of [[r.home,a,'İç saha',fullCounts[0],homeHalf.length],[r.away,b,'Dış saha',fullCounts[1],awayHalf.length]]){
+ const total=section?.games?.length||0;
+ if(total<5)predictionWarnings.push(esc(name)+': geçmiş maç '+total+'/5');
+ if(full<5)predictionWarnings.push(esc(name)+': '+venue+' 90 dk skorları '+full+'/5');
+ if(half<5||half<full)predictionWarnings.push(esc(name)+': '+venue+' ilk yarı skorları '+half+'/'+Math.max(5,full));
+ if(full<8)predictionWarnings.push(esc(name)+': '+venue+' örneklem sınırlı ('+full+'/8)');
+}
+if(latestH2h.count<10)predictionWarnings.push('Genel H2H: '+latestH2h.count+'/10 maç');
+if((h?.venue_last5?.count||0)<5)predictionWarnings.push('Ev sahası H2H: '+(h?.venue_last5?.count||0)+'/5 maç');
+if(msClose)predictionWarnings.push('MS puanları birbirine yakın.');
+if(goalConflict)predictionWarnings.push('MS puanı ile gol ortalamaları çelişiyor.');
+const predictionTile=(label,score,ready,risky=false)=>{
+ const known=Number.isFinite(score),green=known&&ready&&!risky&&score>=80;
+ return '<div style="min-width:0;padding:9px 4px;text-align:center;border-radius:7px;background:'+(green?'#75e8a6':'#252b36')+';color:'+(green?'#102026':'#fff')+'"><b style="font-size:13px">'+label+'</b><strong style="display:block;font-size:22px">'+(known?Math.round(score):'—')+'</strong><small style="color:inherit">'+(!ready?'Veri eksik':risky?'Riskli':'Model puanı')+'</small></div>';
+};
+const systemPredictionPanel='<section class="panel system-prediction-panel"><h3>Sistem tahmini</h3><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-bottom:8px">'+
+ [['MS 1','ms1'],['MS 0','ms0'],['MS 2','ms2']].map(([label,key])=>predictionTile(label,scores[key],marketReady[key],marketRisk[key])).join('')+
+ '</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px">'+
+ predictionTile('İlk yarı 0,5 ÜST',scores.half05,marketReady.half05,marketRisk.half05)+
+ predictionTile('90 dk 2,5 ÜST',over25Score,Number.isFinite(over25Score))+
+ '</div><div style="margin-top:10px;font-size:14px;line-height:1.5"><b>Veri uyarıları</b>'+
+ (predictionWarnings.length?predictionWarnings.map(w=>'<div style="color:#ff9292">⚠ '+w+'</div>').join(''):'<div style="color:#86efac">Belirtilen veri kontrollerinde eksik bulunmadı.</div>')+
+ '<small>Model puanı başarı garantisi değildir.</small></div></section>';
 const panels={system:systemPanel,systemPrediction:systemPredictionPanel,goals:valid(a)||valid(b)?goalsPanel:'',averages:counts.home||counts.away?avgPanel:'',h2h:h2hPanel,venue:venueH?.count?venueHPanel:"",halftime:halfMini+(halfOverIndicator===null?metric(halfBonusLabel,formatBonus(h2hHalfBonus)): ''),comparison:comparePanel,result:matchResultPanel(msResult)};
 const hasAnalysisData=[scores.ms1, scores.over15, scores.half05, scores.half15].some(Number.isFinite);
 const all=enabled===null;
