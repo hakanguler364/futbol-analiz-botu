@@ -1336,9 +1336,69 @@ def sportsdb_head_to_head(match):
             "under25": sum(g["home_goals"] + g["away_goals"] <= 2 for g in games),
             "source": "TheSportsDB (dogrulanmis gecmis maclar)"}
 
+def italian_h2h_key(name):
+    key = team_match_key(name)
+    return "ascoli" if key in ("ascolicalcio", "ascolipicchiofc", "ascolicalcio1898fc") else key
+
+
+def openfootball_serie_b_results():
+    """Read historical Serie B results from the openfootball CC0 archive."""
+    from concurrent.futures import ThreadPoolExecutor
+    from calendar import month_abbr
+
+    def fetch_season(year):
+        season = f"{year}-{(year + 1) % 100:02d}"
+        key = ("openfootball-serie-b", year)
+        cached = CACHE.get(key)
+        if cached and (cached["result"] or time.time() - cached["time"] < 300):
+            return cached["result"]
+        url = f"https://raw.githubusercontent.com/openfootball/italy/master/{season}/2-serieb.txt"
+        rows = []
+        try:
+            with urllib.request.urlopen(url, timeout=6) as response:
+                lines = response.read(500_000).decode("utf-8-sig").splitlines()
+            day = None
+            score = r"(\d+)-(\d+)(?: \((\d+)-(\d+)\))?"
+            for line in lines:
+                line = line.strip()
+                heading = re.fullmatch(r"(Mon|Tue|Wed|Thu|Fri|Sat|Sun) ([A-Z][a-z]{2}) (\d{1,2})", line)
+                if heading:
+                    day = None
+                    month = list(month_abbr).index(heading[2])
+                    candidate = datetime.date(year + (month < 7), month, int(heading[3]))
+                    if candidate.strftime("%a") == heading[1]:
+                        day = candidate.isoformat()
+                    continue
+                if not day:
+                    continue
+                line = re.sub(r"^\d{1,2}:\d{2}\s+", "", line)
+                old = re.fullmatch(r"(.+?)\s+v\s+(.+?)\s+" + score, line)
+                if old:
+                    home, away, hg, ag, hh, ah = old.groups()
+                else:
+                    new = re.fullmatch(r"(.+?)\s{2,}" + score + r"\s{2,}([^\[\]]+)", line)
+                    if not new:
+                        continue
+                    home, hg, ag, hh, ah, away = new.groups()
+                rows.append({"date": day, "home": home, "away": away,
+                             "ft_home": int(hg), "ft_away": int(ag),
+                             "ht_home": int(hh) if hh is not None else None,
+                             "ht_away": int(ah) if ah is not None else None})
+        except (OSError, UnicodeError, ValueError):
+            rows = []
+        CACHE[key] = {"time": time.time(), "result": rows}
+        return rows
+
+    with MATCH_FETCH_LOCKS.setdefault(("openfootball-serie-b",), Lock()):
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            return [row for rows in pool.map(fetch_season, (2015, 2016, 2017, 2019, 2020)) for row in rows]
+
+
 def supplement_head_to_head(match, primary):
-    home = team_match_key(match["homeTeam"].get("name"))
-    away = team_match_key(match["awayTeam"].get("name"))
+    league = match.get("espn_league")
+    team_key = italian_h2h_key if league == "ita.2" else team_match_key
+    home = team_key(match["homeTeam"].get("name"))
+    away = team_key(match["awayTeam"].get("name"))
     cutoff = str(match.get("utcDate") or "")[:10]
     if not cutoff or not home or not away or home == away:
         return primary
@@ -1348,11 +1408,15 @@ def supplement_head_to_head(match, primary):
             return primary
     games = {game["date"]: game for game in source_games}
     changed = False
-    for row in football_charts_results(match.get("espn_league")):
+    supplemental_sources = set()
+    archive = [(row, "Football Charts (CC BY 4.0)") for row in football_charts_results(league)]
+    if league == "ita.2":
+        archive.extend((row, "openfootball Italy (CC0)") for row in openfootball_serie_b_results())
+    for row, archive_source in archive:
         day = row["date"]
         if not day or day >= cutoff:
             continue
-        teams = (team_match_key(row["home"]), team_match_key(row["away"]))
+        teams = (team_key(row["home"]), team_key(row["away"]))
         if teams not in ((home, away), (away, home)):
             continue
         at_home = teams[0] == home
@@ -1365,6 +1429,7 @@ def supplement_head_to_head(match, primary):
             if (existing["at_home"], existing["home_goals"], existing["away_goals"]) == (at_home, hg, ag):
                 if half_valid and existing.get("half_goals") is None:
                     games[day] = dict(existing, half_goals=(hs, hc))
+                    supplemental_sources.add(archive_source)
                     changed = True
             continue
         date = datetime.date.fromisoformat(day)
@@ -1375,6 +1440,7 @@ def supplement_head_to_head(match, primary):
         if half_valid:
             game["half_goals"] = (hs, hc)
         games[day] = game
+        supplemental_sources.add(archive_source)
         changed = True
     if not changed:
         return primary
@@ -1394,7 +1460,7 @@ def supplement_head_to_head(match, primary):
 
     return {**(primary or {}), **summarize(ordered), "games": ordered,
             "venue_last5": summarize([g for g in ordered if g["at_home"]][:5]),
-            "supplemental_source": "Football Charts (CC BY 4.0)"}
+            "supplemental_source": " + ".join(sorted(supplemental_sources))}
 
 
 def champions_league_fixture(match):
