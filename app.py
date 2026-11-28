@@ -1394,9 +1394,86 @@ def openfootball_serie_b_results():
             return [row for rows in pool.map(fetch_season, (2015, 2016, 2017, 2019, 2020)) for row in rows]
 
 
+OPENFOOTBALL_H2H = {
+    "eng.1": ("en.1", (2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023)),
+    "eng.2": ("en.2", (2013, 2014, 2015, 2018, 2019, 2020, 2021, 2022, 2023)),
+    "eng.3": ("en.3", (2013, 2014, 2015, 2018, 2019, 2020)),
+    "eng.4": ("en.4", (2013, 2014, 2015, 2018, 2019, 2020)),
+    "ger.1": ("de.1", (2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023)),
+    "ger.2": ("de.2", (2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023)),
+    "ger.3": ("de.3", (2015, 2016, 2017, 2018, 2019, 2020)),
+    "esp.1": ("es.1", (2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023)),
+    "esp.2": ("es.2", (2015, 2016, 2017, 2018, 2019, 2020)),
+    "fra.1": ("fr.1", (2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023)),
+    "fra.2": ("fr.2", (2015, 2016, 2017, 2018, 2019, 2020)),
+    "ita.1": ("it.1", (2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023)),
+    "ned.1": ("nl.1", (2018, 2019, 2020, 2021, 2022, 2023)),
+    "por.1": ("pt.1", (2018, 2019, 2020, 2021, 2022, 2023)),
+    "aut.1": ("at.1", (2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023)),
+    "bel.1": ("be.1", (2018, 2019, 2020)),
+    "gre.1": ("gr.1", (2018, 2019, 2020)),
+    "sco.1": ("sco.1", (2018, 2019, 2020)),
+    "tur.1": ("tr.1", (2018, 2019, 2020)),
+}
+
+
+def openfootball_h2h_rows(league):
+    from concurrent.futures import ThreadPoolExecutor
+
+    if league not in OPENFOOTBALL_H2H:
+        return ()
+    code, years = OPENFOOTBALL_H2H[league]
+
+    def fetch_year(year):
+        cache_key = ("openfootball-h2h", code, year)
+        cached = CACHE.get(cache_key)
+        if cached and (cached["result"] or time.time() - cached["time"] < 300):
+            return cached["result"]
+        season = f"{year}-{(year + 1) % 100:02d}"
+        url = f"https://raw.githubusercontent.com/openfootball/football.json/master/{season}/{code}.json"
+        rows = []
+        try:
+            with urllib.request.urlopen(url, timeout=5) as response:
+                data = json.loads(response.read(800_000))
+            for match in data.get("matches") or []:
+                score = match.get("score")
+                if not isinstance(score, dict):
+                    continue
+                full = score.get("ft")
+                if not isinstance(full, list) or len(full) != 2 or score_pair(*full) is None:
+                    continue
+                half = score.get("ht")
+                ht = score_pair(*half) if isinstance(half, list) and len(half) == 2 else None
+                day = match.get("date")
+                if not isinstance(day, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+                    continue
+                if not match.get("team1") or not match.get("team2"):
+                    continue
+                hg, ag = score_pair(*full)
+                rows.append({"date": day, "home": match["team1"], "away": match["team2"],
+                             "ft_home": hg, "ft_away": ag,
+                             "ht_home": ht[0] if ht else None, "ht_away": ht[1] if ht else None})
+        except (OSError, ValueError, TypeError, AttributeError):
+            rows = []
+        CACHE[cache_key] = {"time": time.time(), "result": rows}
+        return rows
+
+    with MATCH_FETCH_LOCKS.setdefault(("openfootball-h2h", code), Lock()):
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            return [row for rows in pool.map(fetch_year, years) for row in rows]
+
+
+def archive_h2h_key(name):
+    # Some federation files append the legal club suffix to the display name.
+    name = re.sub(r"\s+(?:F\.?C\.?|A\.?F\.?C\.?|S\.?K\.?)$", "", str(name or ""), flags=re.I)
+    key = team_match_key(name)
+    return {"realmadridcf": "realmadrid", "fcbarcelona": "barcelona",
+            "bayernmuenchen": "bayernmunchen", "bayernmunich": "bayernmunchen"}.get(key, key)
+
+
 def supplement_head_to_head(match, primary):
     league = match.get("espn_league")
-    team_key = italian_h2h_key if league == "ita.2" else team_match_key
+    team_key = italian_h2h_key if league == "ita.2" else archive_h2h_key
     home = team_key(match["homeTeam"].get("name"))
     away = team_key(match["awayTeam"].get("name"))
     cutoff = str(match.get("utcDate") or "")[:10]
@@ -1412,6 +1489,7 @@ def supplement_head_to_head(match, primary):
     archive = [(row, "Football Charts (CC BY 4.0)") for row in football_charts_results(league)]
     if league == "ita.2":
         archive.extend((row, "openfootball Italy (CC0)") for row in openfootball_serie_b_results())
+    archive.extend((row, "openfootball (CC0)") for row in openfootball_h2h_rows(league))
     for row, archive_source in archive:
         day = row["date"]
         if not day or day >= cutoff:
