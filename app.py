@@ -1688,6 +1688,15 @@ def champions_league_rule(match):
 
 
 def analyze(match):
+    key = ("analysis", match["id"])
+    with MATCH_FETCH_LOCKS.setdefault(key, Lock()):
+        cached = CACHE.get(key)
+        if cached and time.time() - cached["time"] < 600:
+            return cached["result"]
+        return analyze_uncached(match)
+
+
+def analyze_uncached(match):
     home, away = match["homeTeam"], match["awayTeam"]
     output = {
         "match_id": match["id"],
@@ -1703,9 +1712,6 @@ def analyze(match):
     # A short cache avoids repeating slow provider calls for the same fixture.
     import concurrent.futures
     cache_key = ("analysis", match["id"])
-    cached = CACHE.get(cache_key)
-    if cached and time.time() - cached["time"] < 600:
-        return cached["result"]
 
     def load_section(key, team):
         errors = []
