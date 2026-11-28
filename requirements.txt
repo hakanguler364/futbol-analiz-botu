@@ -1,3 +1,4 @@
 psycopg[binary]>=3.2,<4
 certifi>=2025.1.31
 quickjs==1.19.4
+pyarrow>=20,<27
