@@ -226,6 +226,39 @@ html,body,button,input,select,textarea,table,pre{font-family:Inter,system-ui,-ap
 .match-notice:hover span{animation-play-state:paused}
 @keyframes match-notice-scroll{from{left:0;transform:translateX(0)}to{left:100%;transform:translateX(-100%)}}
 @media(prefers-reduced-motion:reduce){.match-notice span{animation:none}}
+/* Analiz ve özet kutularında okunabilir tipografi. */
+.analysis-grid .panel h3,
+.analysis-grid > .panel:first-child h3 {
+  font-size: clamp(13px, 2.5vw, 16px);
+  font-weight: 750;
+}
+.analysis-grid .panel :is(h3, h4, small) { overflow-wrap: anywhere; }
+.analysis-grid .metric,
+.analysis-grid > .panel:first-child .metric { font-size: 13px; line-height: 1.4; }
+.analysis-grid .metric b,
+.analysis-grid > .panel:first-child .metric b { font-size: 14px; font-weight: 750; }
+.analysis-grid .compact-table { font-size: 12px; line-height: 1.35; }
+.analysis-grid .compact-table th { color: #c2dff8; font-weight: 700; }
+.analysis-grid .panel small,
+.analysis-grid > .panel:first-child small,
+.analysis-grid .small-note {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.analysis-grid .small-note,
+.system-prediction-item.unavailable { color: #cbdcf0; }
+.analysis-grid > .panel:first-child .form-chip { font-size: 10px; }
+.system-prediction-item { font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.system-prediction-item span, .half-detail, .half-mini { font-size: 12px; }
+.system-panel .inner { font-size: 14px; line-height: 1.4; }
+.system-panel .ms-score-item b,
+.system-panel .ms-score-item strong { font-size: 14px; }
+.analysis-grid .system-panel .ms-score-item small { font-size: 12px; }
+.prediction-ms span { font-size: 13px; }
+.team-info-box, .cards .card, .odds-tile small,
+.odds-tile .odds-preference, .odds-money, .odds-note,
+.recommendation-score { font-size: 12px; }
+.cards .card, .odds-tile { overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
