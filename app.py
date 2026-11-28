@@ -1108,6 +1108,26 @@ def football_charts_results(league):
     return [row for code in codes for row in cached["result"].get(code, ())]
 
 
+TEAM_HISTORY_ALIASES = {
+    "eng.1": {"leedsunited": "leeds", "coventrycity": "coventry",
+              "manchesterunited": "manutd", "ipswichtown": "ipswich"},
+    "ger.1": {"fccologne": "1fckoln", "svelversberg": "sv07elversberg",
+              "hamburgsv": "hamburgersv", "bayernmunich": "fcbayernmunchen",
+              "mainz": "1fsvmainz05", "schalke04": "fcschalke04"},
+    "esp.1": {"malaga": "malagacf", "elche": "elchecf",
+              "atleticomadrid": "atleticodemadrid", "alaves": "deportivoalaves"},
+    "fra.1": {"angers": "angerssco", "lens": "rclens", "lehavreac": "havreathleticclub",
+              "strasbourg": "rcstrasbourgalsace", "lemans": "lemansfc", "lille": "losclille",
+              "nice": "ogcnice", "troyes": "estactroyes", "lorient": "fclorient"},
+    "ned.1": {"excelsior": "excelsiorrotterdam", "psveindhoven": "psv"},
+    "por.1": {"arouca": "fcarouca", "rioave": "rioavefc", "moreirense": "moreirensefc",
+              "academicodeviseu": "academico",
+              "alverca": "fcalverca", "vitoriadeguimaraes": "vitoriasc",
+              "estrela": "estrelaamadora"},
+    "tur.1": {"gaziantepfk": "gaziantep", "amedsfk": "amedspor"},
+}
+
+
 def merge_open_matchday_recent(match, side, primary):
     league = match.get("espn_league")
     cutoff = str(match.get("utcDate") or "")[:10]
@@ -1118,7 +1138,13 @@ def merge_open_matchday_recent(match, side, primary):
     if len(venue_rows) >= 8 and all(valid_recent_half(row) is not None for row in venue_rows):
         return primary
 
-    team = team_match_key(match[side + "Team"].get("name", ""))
+    aliases = TEAM_HISTORY_ALIASES.get(league, {})
+
+    def history_key(name):
+        key = team_match_key(name)
+        return aliases.get(key, key)
+
+    team = history_key(match[side + "Team"].get("name", ""))
     if not team:
         return primary
     first_day = season_start(match["utcDate"], league)
@@ -1129,8 +1155,8 @@ def merge_open_matchday_recent(match, side, primary):
         day = row.get("date") or ""
         if not first_day <= day < cutoff:
             continue
-        home = team_match_key(row.get("home") or "")
-        away = team_match_key(row.get("away") or "")
+        home = history_key(row.get("home") or "")
+        away = history_key(row.get("away") or "")
         if not home or not away or home == away or team not in (home, away):
             continue
         venue = "home" if team == home else "away"
@@ -1153,7 +1179,7 @@ def merge_open_matchday_recent(match, side, primary):
         records.setdefault(identity, []).append(result)
 
     def key_for(row):
-        return row["date"], row["venue"], team_match_key(row.get("opponent") or "")
+        return row["date"], row["venue"], history_key(row.get("opponent") or "")
 
     def full(row):
         return row["scored"], row["conceded"]
