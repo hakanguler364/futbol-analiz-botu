@@ -1507,6 +1507,67 @@ def english_h2h_rows(home, away):
                 for day, hn, an, hg, ag in cached["result"].get(tuple(sorted((home, away))), ())]
 
 
+WORLD_RESULTS_COUNTRIES = {
+    "eng": "ENG", "esp": "ES", "ger": "DE", "ita": "IT", "fra": "FR",
+    "tur": "TR", "ned": "NL", "por": "PT", "sco": "SCO", "aut": "AT",
+    "gre": "GR", "bel": "BE", "pol": "PL", "cze": "CZ", "nor": "NO",
+    "rus": "RU", "bra": "BR", "arg": "AR", "usa": "US", "jpn": "JP",
+    "col": "CO", "uru": "UY", "ecu": "EC", "bol": "BO", "par": "PY",
+    "aus": "AU", "ind": "IN", "crc": "CR", "ksa": "SA",
+}
+WORLD_RESULTS_SOURCE = "schochastics football-data (ODC-BY) https://github.com/schochastics/football-data"
+
+
+def world_h2h_rows(league, home, away):
+    country = WORLD_RESULTS_COUNTRIES.get((league or "").split(".", 1)[0])
+    if not country:
+        return ()
+    import tempfile
+    from functools import lru_cache
+
+    key = ("world-results-archive",)
+    with MATCH_FETCH_LOCKS.setdefault(key, Lock()):
+        cached = CACHE.get(key)
+        if not cached or (not cached["result"] and time.time() - cached["time"] >= 600):
+            groups = {}
+            countries = set(WORLD_RESULTS_COUNTRIES.values())
+            normalize = lru_cache(maxsize=8192)(archive_h2h_key)
+            url = "https://raw.githubusercontent.com/schochastics/football-data/master/data/results/games.parquet"
+            columns = ["home", "away", "date", "gh", "ga", "full_time", "home_code", "away_code"]
+            try:
+                from pyarrow.parquet import ParquetFile
+
+                with tempfile.TemporaryFile() as archive, urllib.request.urlopen(url, timeout=12) as response:
+                    total = 0
+                    while chunk := response.read(262144):
+                        total += len(chunk)
+                        if total > 22_000_000:
+                            raise ValueError("Oversized world results archive")
+                        archive.write(chunk)
+                    archive.seek(0)
+                    for batch in ParquetFile(archive).iter_batches(batch_size=16384, columns=columns):
+                        for hn, an, day, hg, ag, status, hc, ac in zip(*(col.to_pylist() for col in batch.columns)):
+                            if (hc != ac or hc not in countries or day.year < 1990 or status != "F"
+                                    or hg is None or ag is None or min(hg, ag) < 0 or not hn or not an):
+                                continue
+                            hn, an = normalize(hn), normalize(an)
+                            if hn == an:
+                                continue
+                            pair = (hc, *sorted((hn, an)))
+                            groups.setdefault(pair, []).append((day, hn, an, hg, ag))
+            except (ImportError, OSError, ValueError, TypeError) as exc:
+                print(f"WORLD_RESULTS_ARCHIVE_ERROR {type(exc).__name__}", flush=True)
+                groups = {}
+            cached = CACHE[key] = {"time": time.time(), "result": groups}
+
+    records = {}
+    for day, hn, an, hg, ag in cached["result"].get((country, *sorted((home, away))), ()):
+        records.setdefault(day, set()).add((hn, an, hg, ag))
+    return [{"date": day.isoformat(), "home": hn, "away": an, "ft_home": hg, "ft_away": ag,
+             "ht_home": None, "ht_away": None}
+            for day, pairs in records.items() if len(pairs) == 1 for hn, an, hg, ag in pairs]
+
+
 def supplement_head_to_head(match, primary):
     league = match.get("espn_league")
     team_key = italian_h2h_key if league == "ita.2" else archive_h2h_key
@@ -1528,6 +1589,7 @@ def supplement_head_to_head(match, primary):
     archive.extend((row, "openfootball (CC0)") for row in openfootball_h2h_rows(league))
     if league in ("eng.1", "eng.2", "eng.3", "eng.4", "eng.fa", "eng.league_cup"):
         archive.extend((row, ENGLISH_RESULTS_SOURCE) for row in english_h2h_rows(home, away))
+    archive.extend((row, WORLD_RESULTS_SOURCE) for row in world_h2h_rows(league, home, away))
     for row, archive_source in archive:
         day = row["date"]
         if not day or day >= cutoff:
@@ -2116,11 +2178,53 @@ def analysis_context():
     return context
 
 
+def complete_match_data(output):
+    sections = output["sections"]
+    for side in ("home", "away"):
+        games = (sections.get(f"{side}_last5") or {}).get("games") or []
+        venue = [game for game in games if game.get("venue") == side]
+        if len(games) < 5 or not venue or any(valid_recent_half(game) is None for game in venue):
+            return False
+    h2h = sections.get("head_to_head_last10") or {}
+    return h2h.get("count", 0) >= 10 and (h2h.get("venue_last5") or {}).get("count", 0) >= 5
+
+
+def initialize_data_audit(db_path):
+    with closing(membership.connect(db_path)) as db, db:
+        db.execute("""CREATE TABLE IF NOT EXISTS match_data_audit (
+            match_day TEXT NOT NULL,
+            fixture_id TEXT NOT NULL,
+            complete INTEGER NOT NULL,
+            PRIMARY KEY (match_day, fixture_id)
+        )""")
+
+
+def record_data_audit(db_path, match, complete):
+    day = kickoff_day(match["utcDate"]).isoformat()
+    with closing(membership.connect(db_path)) as db, db:
+        db.execute(
+            """INSERT INTO match_data_audit (match_day, fixture_id, complete)
+               VALUES (?, ?, ?) ON CONFLICT (match_day, fixture_id)
+               DO UPDATE SET complete=excluded.complete""",
+            (day, str(match["id"]), int(complete)),
+        )
+
+
+def data_audit_report(db_path, day):
+    with closing(membership.connect(db_path)) as db:
+        result = db.execute(
+            """SELECT COUNT(*) AS checked, COALESCE(SUM(complete), 0) AS complete
+               FROM match_data_audit WHERE match_day=?""", (day,),
+        ).fetchone()
+    return {"date": day, "checked": result["checked"], "complete": result["complete"],
+            "incomplete": result["checked"] - result["complete"]}
+
+
 def subscriber_analysis(output, panels):
     context = analysis_context()
     render = context.eval("(data, panels) => JSON.stringify(analysisView(JSON.parse(data), JSON.parse(panels)))")
     view = json.loads(render(json.dumps(output), json.dumps(panels)))
-    return {"status": output["status"], "view": view}
+    return {"status": output["status"], "view": view, "data_complete": output.get("data_complete", False)}
 
 
 class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
@@ -2209,6 +2313,13 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
             if path == "/api/leagues":
                 self.send({"leagues": ESPN_LEAGUES})
                 return
+            if path == "/api/match-data-audit":
+                if not self.membership_path or not self.current_member["is_admin"]:
+                    self.send({"error": "Yönetici yetkisi gerekiyor"}, 403)
+                    return
+                day = valid_date(urllib.parse.parse_qs(parsed.query).get("date", [istanbul_today().isoformat()])[0])
+                self.send(data_audit_report(self.membership_path, day))
+                return
             if path == "/api/matches":
                 date = urllib.parse.parse_qs(parsed.query).get(
                     "date", [istanbul_today().isoformat()]
@@ -2232,9 +2343,14 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
                 if not match:
                     self.send({"error": "Mac bulunamadi"}, 404)
                     return
-                output = analyze(match)
+                output = dict(analyze(match))
+                output["data_complete"] = complete_match_data(output)
                 CACHE[mid] = output
                 if self.membership_path:
+                    try:
+                        record_data_audit(self.membership_path, match, output["data_complete"])
+                    except Exception as exc:
+                        print(f"MATCH_DATA_AUDIT_WRITE_ERROR {type(exc).__name__}", flush=True)
                     try:
                         archive_system_prediction(self.membership_path, match, output)
                     except Exception:
@@ -2312,6 +2428,11 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     Handler.membership_path = configure()
+    if Handler.membership_path:
+        try:
+            initialize_data_audit(Handler.membership_path)
+        except Exception as exc:
+            print(f"MATCH_DATA_AUDIT_SETUP_ERROR {type(exc).__name__}", flush=True)
     host = "127.0.0.1" if os.environ.get("MEMBERSHIP_MODE") == "local" else "0.0.0.0"
     print("http://localhost:" + str(port), flush=True)
     http.server.ThreadingHTTPServer((host, port), Handler).serve_forever()
