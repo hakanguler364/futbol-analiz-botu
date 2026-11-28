@@ -1471,6 +1471,42 @@ def archive_h2h_key(name):
             "bayernmuenchen": "bayernmunchen", "bayernmunich": "bayernmunchen"}.get(key, key)
 
 
+ENGLISH_RESULTS_SOURCE = "English Football League Data, Sean Elvidge (CC BY 4.0) https://github.com/seanelvidge/England-football-results"
+
+
+def english_h2h_rows(home, away):
+    """Index the English archive across league tiers using exact club names."""
+    key = ("elvidge-league-results",)
+    with MATCH_FETCH_LOCKS.setdefault(key, Lock()):
+        cached = CACHE.get(key)
+        if not cached or time.time() - cached["time"] >= 86400:
+            groups = {}
+            url = "https://raw.githubusercontent.com/seanelvidge/England-football-results/main/EnglandLeagueResults.csv"
+            try:
+                with urllib.request.urlopen(url, timeout=12) as response:
+                    data = response.read(24_000_001)
+                if len(data) > 24_000_000 or not data.endswith(b"\n"):
+                    raise ValueError("Incomplete or oversized English archive")
+                reader = csv.DictReader(io.StringIO(data.decode("utf-8-sig")))
+                for row in reader:
+                    day = row["Date"]
+                    if day < "1990-01-01" or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+                        continue
+                    hn, an = (archive_h2h_key(row[k]) for k in ("HomeTeam", "AwayTeam"))
+                    scores = score_pair(row["hGoal"], row["aGoal"])
+                    if not hn or not an or hn == an or scores is None:
+                        continue
+                    pair = tuple(sorted((hn, an)))
+                    groups.setdefault(pair, []).append((day, hn, an, *scores))
+            except (OSError, UnicodeError, ValueError, KeyError, csv.Error) as exc:
+                print(f"ENGLISH_ARCHIVE_ERROR {type(exc).__name__}", flush=True)
+                groups = cached["result"] if cached else {}
+            cached = CACHE[key] = {"time": time.time() if groups else time.time() - 86100, "result": groups}
+        return [{"date": day, "home": hn, "away": an,
+                 "ft_home": hg, "ft_away": ag, "ht_home": None, "ht_away": None}
+                for day, hn, an, hg, ag in cached["result"].get(tuple(sorted((home, away))), ())]
+
+
 def supplement_head_to_head(match, primary):
     league = match.get("espn_league")
     team_key = italian_h2h_key if league == "ita.2" else archive_h2h_key
@@ -1490,6 +1526,8 @@ def supplement_head_to_head(match, primary):
     if league == "ita.2":
         archive.extend((row, "openfootball Italy (CC0)") for row in openfootball_serie_b_results())
     archive.extend((row, "openfootball (CC0)") for row in openfootball_h2h_rows(league))
+    if league in ("eng.1", "eng.2", "eng.3", "eng.4", "eng.fa", "eng.league_cup"):
+        archive.extend((row, ENGLISH_RESULTS_SOURCE) for row in english_h2h_rows(home, away))
     for row, archive_source in archive:
         day = row["date"]
         if not day or day >= cutoff:
