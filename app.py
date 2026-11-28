@@ -5,6 +5,7 @@ import os, json, urllib.request, urllib.parse, urllib.error, http.server, dateti
 
 from contextlib import closing
 from threading import Lock, Thread
+from zoneinfo import ZoneInfo
 
 import membership
 from access import ANALYSIS_VIEW, AccessHandler, configure
@@ -13,6 +14,7 @@ BASE = pathlib.Path(__file__).parent
 TOKEN = os.getenv("FOOTBALL_DATA_TOKEN", "").strip()
 TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TG_CHAT = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+ISTANBUL = ZoneInfo("Europe/Istanbul")
 CACHE = {}
 MATCH_CACHE = {}
 MATCH_FETCH_LOCKS = {}
@@ -169,6 +171,23 @@ def valid_date(value):
     return value
 
 
+def istanbul_today():
+    return datetime.datetime.now(ISTANBUL).date()
+
+
+def fixture_utc_days(day):
+    local_start = datetime.datetime.combine(day, datetime.time.min, ISTANBUL)
+    local_end = local_start + datetime.timedelta(days=1, microseconds=-1)
+    return tuple(value.astimezone(datetime.timezone.utc).date() for value in (local_start, local_end))
+
+
+def kickoff_day(value):
+    kickoff = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if kickoff.tzinfo is None:
+        kickoff = kickoff.replace(tzinfo=datetime.timezone.utc)
+    return kickoff.astimezone(ISTANBUL).date()
+
+
 ESPN_LEAGUES = ["eng.1","eng.2","eng.3","eng.4","eng.fa","eng.league_cup","esp.1","esp.2","esp.copa_del_rey","ger.1","ger.2","ger.3","ger.dfb_pokal","ita.1","ita.2","ita.coppa_italia","fra.1","fra.2","fra.coupe_de_france","tur.1","tur.2","tur.cup","ned.1","ned.2","ned.cup","por.1","por.2","por.taca.portugal","bel.1","bel.2","sco.1","sco.2","sco.3","sco.4","sco.fa","irl.1","nir.1","wal.1","aut.1","sui.1","den.1","nor.1","swe.1","fin.1","pol.1","cze.1","gre.1","rou.1","rus.1","ukr.1","cro.1","srb.1","hun.1","usa.1","usa.open","mex.1","mex.2","bra.1","bra.2","bra.copa","arg.1","arg.2","col.1","chi.1","uru.1","par.1","per.1","ecu.1","ven.1","bol.1","crc.1","hon.1","gua.1","slv.1","ksa.1","uae.1","qat.1","ind.1","jpn.1","jpn.2","kor.1","chn.1","aus.1","aus.2","idn.1","tha.1","mys.1","sgp.1","uefa.champions","uefa.europa","uefa.europa.conf","uefa.nations","uefa.euro","uefa.euro.qualifying","fifa.world","fifa.worldq.uefa","fifa.worldq.conmebol","fifa.worldq.concacaf","fifa.worldq.afc","fifa.worldq.caf","fifa.friendly","concacaf.champions","conmebol.libertadores","conmebol.sudamericana","afc.champions","caf.champions","fifa.club.world_cup"]
 
 SOCCERWAY_LEAGUES = {'pol.2': ('Polonya 1. Liga', ['poland/division-1']), 'pol.3': ('Polonya 2. Liga', ['poland/division-2']), 'cze.2': ('Çekya 2. Ligi', ['czech-republic/chnl']), 'ita.3': ('İtalya Serie C', ['italy/serie-c-group-a', 'italy/serie-c-group-b', 'italy/serie-c-group-c'])}
@@ -320,13 +339,16 @@ def fetch_matches(date, league_filter, *, max_age):
     if cached and time.time() - cached["time"] < max_age:
         return cached["matches"], False
     import concurrent.futures, hashlib
+    local_day = datetime.date.fromisoformat(date)
+    first_utc_day, last_utc_day = fixture_utc_days(local_day)
+    utc_days = list(dict.fromkeys((first_utc_day, last_utc_day)))
     leagues = ESPN_LEAGUES if not league_filter else [league_filter]
     def get_league(league):
         if league in SOCCERWAY_LEAGUES:
             name, _ = SOCCERWAY_LEAGUES[league]
             found = []
             for (group, event_id), (kickoff, fields) in soccerway_events(league, max_age=max_age).items():
-                if (kickoff + datetime.timedelta(hours=3)).date().isoformat() != date:
+                if kickoff.astimezone(ISTANBUL).date() != local_day:
                     continue
                 uid = int.from_bytes(hashlib.sha256(f"soccerway:{group}:{event_id}".encode()).digest()[:7], "big")
                 found.append({
@@ -340,12 +362,11 @@ def fetch_matches(date, league_filter, *, max_age):
             if found or league != "tur.2":
                 return found
         if league == "ger.3":
-            selected_day = datetime.date.fromisoformat(date)
-            events = openliga_season(selected_day, max_age=max_age)
+            events = openliga_season(local_day, max_age=max_age)
             found = []
             for event in events:
                 kickoff = datetime.datetime.fromisoformat(event["matchDateTimeUTC"].replace("Z", "+00:00"))
-                if (kickoff + datetime.timedelta(hours=3)).date() != selected_day:
+                if kickoff_day(kickoff.isoformat()) != local_day:
                     continue
                 uid = int.from_bytes(hashlib.sha256(f'openligadb:{event["matchID"]}'.encode()).digest()[:7], "big")
                 teams = [
@@ -357,9 +378,8 @@ def fetch_matches(date, league_filter, *, max_age):
                     "homeTeam": teams[0], "awayTeam": teams[1], "source": "OpenLigaDB", "espn_league": league, "verified_scores": openliga_result(event),
                 })
             return found
-        # Turkey (UTC+3) calendar day overlaps two UTC calendar dates.
-        utc_days = [date.replace("-", ""), (datetime.date.fromisoformat(date) - datetime.timedelta(days=1)).strftime("%Y%m%d")]
-        def fetch_day(utc_day):
+        def fetch_day(day):
+            utc_day = day.strftime("%Y%m%d")
             found = []
             url = "https://site.api.espn.com/apis/site/v2/sports/soccer/" + league + "/scoreboard?dates=" + utc_day + "&limit=500"
             # Some ESPN competitions reject the optional limit parameter with HTTP 400.
@@ -385,10 +405,10 @@ def fetch_matches(date, league_filter, *, max_age):
             for event in data.get("events", []):
                 kickoff = event.get("date", "")
                 try:
-                    turkey_day = (datetime.datetime.fromisoformat(kickoff.replace("Z", "+00:00")) + datetime.timedelta(hours=3)).date().isoformat()
-                except ValueError:
+                    turkey_day = kickoff_day(kickoff)
+                except (AttributeError, ValueError):
                     continue
-                if turkey_day != date:
+                if turkey_day != local_day:
                     continue
                 teams = (event.get("competitions") or [{}])[0].get("competitors", [])
                 home = next((t for t in teams if t.get("homeAway") == "home"), None)
@@ -414,13 +434,17 @@ def fetch_matches(date, league_filter, *, max_age):
     # Independent global daily fixture feed; merge with ESPN without replacing it.
     def sportsdb(feed_day):
         url = "https://www.thesportsdb.com/api/v1/json/123/eventsday.php?" + urllib.parse.urlencode({"d": feed_day, "s": "Soccer"})
-        data = sportsdb_json(url)
+        data = sportsdb_json(url, max_age=max_age)
         out = []
         for event in data.get("events") or []:
             home, away = event.get("strHomeTeam"), event.get("strAwayTeam")
             if not home or not away:
                 continue
-            kickoff = (event.get("strTimestamp") or ((event.get("dateEvent") or feed_day) + "T" + (event.get("strTime") or "00:00:00") + "Z"))
+            kickoff = event.get("strTimestamp")
+            if not kickoff and event.get("dateEvent") and event.get("strTime"):
+                kickoff = event["dateEvent"] + "T" + event["strTime"] + "Z"
+            if not kickoff or not event.get("idEvent"):
+                continue
             uid = int.from_bytes(hashlib.sha256(("sportsdb"+str(event.get("idEvent"))).encode()).digest()[:7], "big")
             status = str(event.get("strStatus") or "").strip().casefold()
             scores = {"full": score_pair(event.get("intHomeScore"), event.get("intAwayScore"))} if status in {"match finished", "ft", "full time"} else {}
@@ -431,9 +455,9 @@ def fetch_matches(date, league_filter, *, max_age):
         # Filter strictly by competition to avoid mixing unrelated fixtures.
         extra_events = []
         if not league_filter or league_filter in ("tur.1", "tur.2"):
-            for feed_day in (date, (datetime.date.fromisoformat(date) - datetime.timedelta(days=1)).isoformat()):
+            for feed_day in utc_days:
                 try:
-                    extra_events.extend(sportsdb(feed_day))
+                    extra_events.extend(sportsdb(feed_day.isoformat()))
                 except (OSError, ValueError, TypeError) as exc:
                     print("SPORTSDB_FIXTURE_ERROR " + str(exc)[:180], flush=True)
         if league_filter in ("tur.1", "tur.2"):
@@ -452,10 +476,11 @@ def fetch_matches(date, league_filter, *, max_age):
         print("SPORTSDB_FIXTURE_ERROR " + str(exc)[:180], flush=True)
     if TOKEN and not league_filter:
         try:
-            extra = fetch("/matches?" + urllib.parse.urlencode({"dateFrom": date, "dateTo": date})).get("matches", [])
-            items.extend(extra)
-        except Exception:
-            pass
+            query = urllib.parse.urlencode({"dateFrom": first_utc_day, "dateTo": last_utc_day})
+            items.extend(fetch("/matches?" + query).get("matches") or [])
+        except ValueError as exc:
+            cause = exc.__cause__
+            print(f"FOOTBALL_DATA_FIXTURE_ERROR {date} status={getattr(cause, 'code', 'unavailable')}", flush=True)
     # Do not invent fixtures when official providers return no events.
     # Confirmed Egyptian Second Division A fixtures, 19 November 2026 (12:30 UTC).
     # Fixture-only fallback: do not invent team histories or first-half scores.
@@ -488,15 +513,9 @@ def fetch_matches(date, league_filter, *, max_age):
                 "awayTeam": {"name": "Ümraniyespor", "id": None},
                 "source": "TFF doğrulanmış fikstür", "fixture_verified": True})
     # Filter women's football from all fixture sources.
-    local_day = datetime.date.fromisoformat(date)
-    turkey_offset = datetime.timedelta(hours=3)
-
     def in_requested_day(match):
         try:
-            kickoff = datetime.datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
-            if kickoff.tzinfo is None:
-                kickoff = kickoff.replace(tzinfo=datetime.timezone.utc)
-            return (kickoff.astimezone(datetime.timezone.utc) + turkey_offset).date() == local_day
+            return kickoff_day(match["utcDate"]) == local_day
         except (KeyError, ValueError, TypeError, AttributeError):
             return False
 
@@ -678,14 +697,14 @@ def espn_history_json(url, timeout):
     ESPN_HISTORY_CACHE[url] = {"time": now, "data": data}
     return data
 
-def sportsdb_json(url):
+def sportsdb_json(url, *, max_age=21600):
     now = time.time()
     cached = PROVIDER_CACHE.get(url)
-    if cached and now - cached["time"] < 21600:
+    if cached and now - cached["time"] < max_age:
         return cached["data"]
     host = "thesportsdb"
     if PROVIDER_COOLDOWN.get(host, 0) > now:
-        return cached["data"] if cached else {}
+        return {}
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=10) as response:
@@ -694,8 +713,11 @@ def sportsdb_json(url):
         return data
     except urllib.error.HTTPError as exc:
         if exc.code == 429:
-            PROVIDER_COOLDOWN[host] = now + 300
-            return cached["data"] if cached else {}
+            retry_after = (exc.headers or {}).get("Retry-After", "")
+            delay = max(1, int(retry_after)) if retry_after.isascii() and retry_after.isdigit() else 300
+            PROVIDER_COOLDOWN[host] = time.time() + delay
+            print(f"SPORTSDB_RATE_LIMIT retry_after_seconds={delay}", flush=True)
+            return {}
         raise
 
 def sportsdb_recent(match, side):
@@ -1872,7 +1894,7 @@ def recommendation_report(db_path, day):
     archived = [item for item in records if item["data_verified"] == 1]
     unverified_matches = len(records) - len(archived)
     scores_by_id, kickoff_by_id = {}, {}
-    if archived and day <= (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3)).date().isoformat():
+    if archived and day <= istanbul_today().isoformat():
         with RESULT_REFRESH_LOCKS.setdefault(day, Lock()):
             scores_by_id, kickoff_by_id, total_matches = refresh_recommendation_scores(day, archived)
     else:
@@ -2005,15 +2027,13 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
                 return
             if path == "/api/matches":
                 date = urllib.parse.parse_qs(parsed.query).get(
-                    "date", [datetime.datetime.now(
-                        datetime.timezone.utc).date().isoformat()]
+                    "date", [istanbul_today().isoformat()]
                 )[0]
                 league_filter = urllib.parse.parse_qs(parsed.query).get('league', [None])[0]
                 items, demo = matches(date, league_filter)
                 self.send({"matches": [dict(m, id=str(m["id"])) for m in items], "demo": demo, "date": date,
                            "count": len(items),
-                           "message": ("Bu tarih icin API mac dondurmedi. "
-                                       "Ucretsiz plan kapsaminda mac olmayabilir.")
+                           "message": "Bu tarih için kaynaklardan maç doğrulanamadı."
                            if not items else ""})
                 return
             if path.startswith("/api/analyze/"):
@@ -2021,8 +2041,7 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
                 match = MATCH_CACHE.get("by_id", {}).get(mid)
                 if not match:
                     date = urllib.parse.parse_qs(parsed.query).get(
-                        "date", [datetime.datetime.now(
-                            datetime.timezone.utc).date().isoformat()]
+                        "date", [istanbul_today().isoformat()]
                     )[0]
                     items, _ = matches(date)
                     match = next((m for m in items if m["id"] == mid), None)
@@ -2068,8 +2087,7 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
                 if not MS_BACKTEST_LOCK.acquire(blocking=False):
                     self.send({"error": "Geçmiş maçlar zaten hesaplanıyor"}, 409)
                     return
-                yesterday = (datetime.datetime.now(datetime.timezone.utc) +
-                             datetime.timedelta(hours=3)).date() - datetime.timedelta(days=1)
+                yesterday = istanbul_today() - datetime.timedelta(days=1)
                 try:
                     Thread(target=run_ms_backtest, daemon=True,
                            args=(self.membership_path, MS_HISTORY_START, yesterday)).start()
