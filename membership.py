@@ -119,6 +119,16 @@ def initialize(db):
         data_verified INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (match_day, fixture_id)
     );
+    CREATE TABLE IF NOT EXISTS system_prediction_archive (
+        match_day TEXT NOT NULL,
+        fixture_id TEXT NOT NULL,
+        kickoff TEXT NOT NULL,
+        home TEXT NOT NULL,
+        away TEXT NOT NULL,
+        captured_at INTEGER NOT NULL,
+        prediction TEXT NOT NULL,
+        PRIMARY KEY (match_day, fixture_id)
+    );
     CREATE TABLE IF NOT EXISTS ms_score_archive (
         match_day TEXT NOT NULL,
         fixture_id TEXT NOT NULL,

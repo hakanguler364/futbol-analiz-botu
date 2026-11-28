@@ -1728,6 +1728,42 @@ def run_ms_backtest(db_path, first_day, last_day):
         MS_BACKTEST_LOCK.release()
 
 
+def archive_system_prediction(db_path, match, output):
+    kickoff = datetime.datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
+    if kickoff.tzinfo is None or kickoff.timestamp() <= time.time():
+        return
+    raw = analysis_context().eval("""(data) => {
+        const view = analysisView(JSON.parse(data), ['systemPrediction']);
+        return JSON.stringify({...view.systemPrediction, missingData: view.missingData});
+    }""")(json.dumps(output))
+    prediction = json.loads(raw)
+    captured_at = time.time()
+    if captured_at >= kickoff.timestamp() or all(
+        prediction[market]["value"] is None for market in ("half05", "full25")
+    ):
+        return
+    day = kickoff.astimezone(datetime.timezone(datetime.timedelta(hours=3))).date().isoformat()
+    with closing(membership.connect(db_path)) as db, db:
+        db.execute(
+            """INSERT INTO system_prediction_archive
+               (match_day, fixture_id, kickoff, home, away, captured_at, prediction)
+               VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (match_day, fixture_id) DO NOTHING""",
+            (day, str(match["id"]), kickoff.isoformat(), output["home"], output["away"],
+             int(captured_at), raw),
+        )
+
+
+def system_prediction_archive(db_path, day):
+    with closing(membership.connect(db_path)) as db:
+        rows = db.execute(
+            """SELECT fixture_id, kickoff, home, away, captured_at, prediction
+               FROM system_prediction_archive WHERE match_day=?
+               ORDER BY kickoff, fixture_id""",
+            (day,),
+        ).fetchall()
+    return [dict(row, prediction=json.loads(row["prediction"])) for row in rows]
+
+
 def archive_recommendations(db_path, match, output):
     kickoff = datetime.datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
     if kickoff.tzinfo is None or kickoff.timestamp() <= time.time():
@@ -1949,6 +1985,14 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
                            "history": ms_backtest_days(self.membership_path),
                            "running": MS_BACKTEST_LOCK.locked(), "error": MS_BACKTEST_ERROR})
                 return
+            if path == "/api/system-prediction-archive":
+                if not self.membership_path or not self.current_member["is_admin"]:
+                    self.send({"error": "Yönetici yetkisi gerekiyor"}, 403)
+                    return
+                day = valid_date(urllib.parse.parse_qs(parsed.query).get("date", [""])[0])
+                rows = system_prediction_archive(self.membership_path, day)
+                self.send({"date": day, "count": len(rows), "rows": rows})
+                return
             if path == "/api/recommendation-results":
                 if not self.membership_path or "system" not in self.current_panels:
                     self.send({"error": "Bu panel hesabınız için açık değil"}, 403)
@@ -1987,6 +2031,11 @@ class Handler(AccessHandler, http.server.BaseHTTPRequestHandler):
                     return
                 output = analyze(match)
                 CACHE[mid] = output
+                if self.membership_path:
+                    try:
+                        archive_system_prediction(self.membership_path, match, output)
+                    except Exception:
+                        print("SYSTEM_PREDICTION_ARCHIVE_ERROR", flush=True)
                 if self.membership_path and "system" in self.current_panels:
                     try:
                         archive_recommendations(self.membership_path, match, output)

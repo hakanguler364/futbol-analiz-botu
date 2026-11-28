@@ -113,8 +113,9 @@ const halfMatchDetails=halfTeams.filter(([, , ,games])=>games.length)
    '<strong class="team-name-home">'+esc(home?name:opponent)+'</strong> <b>'+homeGoals+'–'+awayGoals+'</b> '+
    '<strong class="team-name-away">'+esc(home?opponent:name)+'</strong></span></div>';
  }).join('')).join('');
+const overIndicatorStatus=(average,threshold)=>average===null?'unavailable':average>threshold?'positive':'below';
 const overIndicatorCard=(label,average,threshold,detail='')=>{
- const status=average===null?'unavailable':average>threshold?'positive':'below';
+ const status=overIndicatorStatus(average,threshold);
  return '<div class="system-prediction-item '+status+'"><b>'+label+'</b>'+
   (detail?'<span>'+detail+'</span>':'')+'</div>';
 };
@@ -350,6 +351,10 @@ return {
  scores,
  marketReady:Object.fromEntries(Object.keys(scores).map(key=>[key,marketReady[key]&&!marketRisk[key]])),
  insufficient:Object.keys(scores).filter(key=>scores[key]===null),
+ ...(all||enabled.includes('systemPrediction')?{systemPrediction:{
+  half05:{value:halfOverIndicator,status:overIndicatorStatus(halfOverIndicator,1.5),h2hBonus:h2hHalfBonus},
+  full25:{value:fullOverIndicator,status:overIndicatorStatus(fullOverIndicator,3.5),h2hBonus:fullOverBonus}
+ }}:{}),
  missingData:showMissingDataRibbon,
  hasAnalysisData,
  ...(all?{counts}:{})
